@@ -1,0 +1,33 @@
+# Phone reminders for the Tasks app: https://alexisdelabre.github.io/tasks/
+# Put this file in .github/workflows/ of the repository that holds Tasks.md,
+# with notify.mjs and core.mjs in reminders/. Add the secret NTFY_TOPIC
+# (Settings → Secrets and variables → Actions): the ntfy topic your phone follows.
+# The job runs after each change to Tasks.md, every 6 hours, and on demand.
+name: Tasks reminders
+on:
+  push:
+    branches: [main]
+    paths: [Tasks.md, reminders/**]
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+concurrency:
+  group: tasks-reminders
+  cancel-in-progress: false
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node reminders/notify.mjs
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }} # optional: only for a protected ntfy topic
+          TASKS_FILE: Tasks.md
+          TASKS_TZ: Europe/Paris # your time zone
+          DIGEST_AT: "08:00" # time of the morning digest
+          APP_URL: https://alexisdelabre.github.io/tasks/ # the link a notification opens
