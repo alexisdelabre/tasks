@@ -300,7 +300,7 @@ function taskHTML({ task: t, list }, { showList = true, showDate = true, drag = 
   if (ch.tags) for (const tag of t.tags) if (tag !== hideTag) chips.push(`<span class="chip tag">#${esc(tag)}</span>`);
   if (t.checked && t.done) chips.push(`<span class="chip">✓ ${esc(dayLabel(t.done))}</span>`);
   // A window task (story L15): « window too short » in amber when start + estimate passes act by.
-  const ph = !stk && (t.by || C.fixedStart(t)) && !t.checked ? C.phase(t) : null; // L24: a fixed start fades before it opens
+  const ph = !stk && (t.by || C.fixedStart(t, listTypeByName(list))) && !t.checked ? C.phase(t) : null; // L24: a fixed start fades before it opens
   if (ph && ph !== 'missed' && C.tooShort(t)) chips.push(`<span class="chip warn">Window too short · ${C.estLabel(t.est)}</span>`);
   if (!stk && t.by && t.firm && !t.checked) chips.push(`<span class="chip firm">Firm</span>`); // a task deadline can be firm too
   const bar = !stk && t.by ? winBar(t, ph) : '';
@@ -593,7 +593,8 @@ function listsNav(lists, typeOf, countOf, withInbox = true) {
 // The day a row belongs to (story L15): its start, else its act-by day. A window task still open after its start day
 // moves to today; one past act by (margin or missed) counts as overdue, so it shows red at the top.
 const isWin = x => !!x.task.by && !x.task.checked && !(window.__stickies || []).includes(x.list);
-const winPhase = x => isWin(x) || (C.fixedStart(x.task) && !x.task.checked) ? C.phase(x.task) : null; // L24: a fixed start too
+const winPhase = x => isWin(x) || (!x.task.checked && C.fixedStart(x.task, listTypeByName(x.list))) ? C.phase(x.task) : null; // L24: a fixed start too
+const listTypeByName = l => C.listTypeOf(currentDoc().sections.find(s => s.name === l));
 // Story L19: before its window opens, a task cannot be done yet. Matrix and Lanes (do-now views) leave it out;
 // Agenda, List and Board (plan views) keep it.
 const notYet = x => winPhase(x) === 'before';
@@ -1154,10 +1155,10 @@ function paintWin(list = $('#fList').value) {
   const type = C.listTypeOf(currentDoc().sections.find(s => s.name === list));
   const stk = isStkList(list), show = type === 'tasks' || stk;
   // Story L24: « Not before » makes the date and hour a start, on a task list only, with both a date and an hour. A deadline
-  // window always starts at its date (L15): the row then shows « Not before », greyed out. Greyed out, never hidden.
-  const hasBy = type === 'tasks' && !!$('#fBy').value, canFix = type === 'tasks' && !hasBy && !!($('#fDue').value && $('#fAt').value);
-  for (const b of $('#fFixed').children) { b.classList.toggle('on', (b.dataset.x === '1') === (hasBy || !!(editing.fixed && canFix))); b.disabled = !canFix; }
-  $('#fixedRow').title = canFix ? '' : hasBy ? 'A deadline window always starts at its date.' : type !== 'tasks' ? 'Only a task has a start.' : 'Set a date and a reminder hour first.';
+  // window starts at its date when it has one (L15): « Not before », greyed out; with no date it is open now: « Anytime », greyed out.
+  const sr = C.startRow({ due: $('#fDue').value || null, at: $('#fAt').value || null, by: $('#fBy').value || null, fixed: editing.fixed }, type), canFix = sr.editable;
+  for (const b of $('#fFixed').children) { b.classList.toggle('on', (b.dataset.x === '1') === sr.on); b.disabled = !canFix; }
+  $('#fixedRow').title = canFix ? '' : type !== 'tasks' ? 'Only a task has a start.' : $('#fBy').value ? (sr.on ? 'A deadline window starts at its date.' : 'No date: the window is open now.') : 'Set a date and a reminder hour first.';
   $('#dlBlock').hidden = !show;
   for (const el of [$('#fDue'), $('#fAt'), ...document.querySelectorAll('.quick-dates button')]) el.disabled = stk;
   $('#startRow').title = stk ? 'A sticky has no start: set its Deadline above.' : '';
@@ -1331,7 +1332,7 @@ function saveEdit() {
     doing: editing.doing,
     streak: !$('#streakRow').hidden && !editing.streakOn ? 'off' : o.streak === 'off' && editing.streakOn ? null : o.streak,
     firm: editing.firm,
-    fixed: !!(editing.fixed && $('#fDue').value && $('#fAt').value && !$('#fBy').value && !isStkList($('#fList').value)), // L24: a start needs a date and an hour; a deadline makes it redundant
+    fixed: !!editing.fixed, // L24: the core drops it when it would do nothing (no hour, a deadline, not a task list)
     lead: editing.margin || null,
   };
   if (!$('#dlBlock').hidden) { next.by = winBy(); next.est = next.by || next.fixed ? editing.est || null : null; if (!next.by) { next.lead = null; next.firm = false; } }

@@ -343,8 +343,16 @@ export function actBy(t, tz = TZ) { return t.by ? todayIn(tz, actByEpoch(t, tz) 
 export function actByTime(t, tz = TZ) { return t.by && (byTime(t) || t.leadH) ? nowTimeIn(tz, actByEpoch(t, tz)) : null; }
 // The day a task belongs to in the Agenda, the counts and the digest: its start, else its act-by day.
 export function dayOf(t, tz = TZ) { return t.due || (t.by ? actBy(t, tz) : null); }
-// A fixed start with no deadline (story L24): the token ~start on a task with a date and an hour. It opens at its start.
-export const fixedStart = t => !t.by && !!(t.fixed && t.due && t.at);
+// A fixed start with no deadline (story L24): the token ~start on a task with a date and an hour, in a task list. It opens at
+// its start. A deadline window already starts at its date (L15); a sticky, a habit or a stock item has no start of its own.
+export const startAllowed = (t, type = 'tasks') => type === 'tasks' && !t.by && !!(t.due && t.at);
+export const fixedStart = (t, type = 'tasks') => !!t.fixed && startAllowed(t, type);
+// The Start row of the edit panel: « Not before » (on) or « Anytime », and whether the user can change it. With a deadline
+// the window decides: a date makes it « Not before », no date makes it open now.
+export function startRow(t, type = 'tasks') {
+  const editable = startAllowed(t, type);
+  return { on: type === 'tasks' && t.by ? !!t.due : !!(t.fixed && editable), editable };
+}
 // before (not yet), window (act now), margin (act by passed, deadline ahead), missed; null with no deadline.
 // A fixed start with no deadline is « before » until its start, then a plain task (null).
 export function phase(t, now = Date.now(), tz = TZ) {
@@ -481,6 +489,7 @@ export function apply(doc, op, today = todayIn()) {
       if (isHabits(doc, op.list) && !t.every) t.every = 'day';
       if ('streak' in op) t.streak = op.streak;
       if (t.every && !t.due) t.due = today;
+      if (t.fixed && !startAllowed(t, listTypeOf(doc.sections.find(s => s.name === (op.list || 'Inbox'))))) t.fixed = false; // no dead ~start (L24)
       if (findTask(doc, t.id)) return t.id; // replayed op
       const same = stockMatch(doc, op.list, t.title);
       if (same) { // a stock item comes back to buy: no duplicate
@@ -512,6 +521,7 @@ export function apply(doc, op, today = todayIn()) {
         if (log && !t.notes.some(n => HABIT_LOG_RE.test(n))) t.notes.push(log); // the history survives a notes edit
       }
       if (t.every && !t.due) t.due = today;
+      if (t.fixed && !startAllowed(t, listTypeOf(f.section))) t.fixed = false; // no dead ~start (L24)
       dirty(t);
       const toList = p.list && p.list.toLowerCase() !== f.section.name.toLowerCase();
       const toGroup = 'group' in p && (p.group || '').toLowerCase() !== f.group.toLowerCase();
