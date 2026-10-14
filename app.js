@@ -770,6 +770,7 @@ function render() {
   const countOf = l => (typeOf(l) === 'habits' ? habitsNow : open).filter(x => x.list === l).length;
   let nav = `<div class="brand">Tasks</div>`;
   nav += `<button class="add-task" data-act="add" title="Add a task (n)"><span class="ico">+</span>New task<kbd>n</kbd></button>`;
+  nav += `<button class="add-task search-btn" data-act="search" title="Search tasks and lists (/ or ⌘K)"><span class="ico"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></span>Search<kbd>⌘K</kbd></button>`;
   nav += VIEWS.map(v => `<button data-view="${v.id}" class="${st.view === v.id ? 'on' : ''}"><span class="ico">${v.id === 'stickies' ? '<span class="stk-ico"></span>' : v.ico || agendaIcon(17)}</span>${v.label}<span class="count ${v.id === 'agenda' && late ? 'late' : ''}">${counts[v.id] || ''}</span></button>`).join('');
   nav += `<div class="sep"></div>` + listsNav(lists, typeOf, countOf) + `<div class="sep"></div>`;
   nav += `<button data-view="done" class="${st.view === 'done' ? 'on' : ''}"><span class="ico">✓</span>Done</button>`;
@@ -925,7 +926,7 @@ function updatePreview() {
 $('#addInput').addEventListener('input', updatePreview);
 function openAdd() { document.body.classList.add('adding'); $('#addForm').classList.add('open'); $('#fab').hidden = true; $('#addInput').focus(); }
 function closeAdd() { document.body.classList.remove('adding'); $('#addForm').classList.remove('open'); $('#fab').hidden = false; $('#addInput').value = ''; updatePreview(); }
-$('#fab').addEventListener('click', openAdd);
+$('#fab').addEventListener('click', () => openPalette()); // story L25: the round button of the phone opens the search; the palette also adds
 $('#addInput').addEventListener('keydown', e => { if (e.key === 'Escape') closeAdd(); });
 // The bar stays open after Enter for a second task; leaving it empty closes it.
 $('#addInput').addEventListener('blur', () => setTimeout(() => { if (!$('#addInput').value.trim() && document.activeElement !== $('#addInput')) closeAdd(); }, 150));
@@ -955,6 +956,7 @@ const navClick = e => {
   }
   if (b.dataset.view) return setView(b.dataset.view);
   if (b.dataset.act === 'add') return openAdd();
+  if (b.dataset.act === 'search') return openPalette();
   if (b.dataset.act === 'newlist') openNewList(b.dataset.type || 'tasks');
 };
 // New list: a name and a type (story B4). The type writes the heading marker: none, ~habits or ~stock.
@@ -1435,11 +1437,99 @@ document.addEventListener('pointerdown', e => {
   setTimeout(() => removeEventListener('click', swallow, true), 700); // a press with no click (a drag) leaves nothing behind
 }, true);
 
+// ---------- command palette (story L25, round 1 choice B) ----------
+// One search over every list: the lists that match (Go to), the open tasks, then the done ones, then « Add … to Inbox ».
+// Adding by hand is rare (Claude adds most tasks), so the add row is the last one and takes the text as typed, into Inbox.
+const pal = $('#palette');
+let palSel = 0, palItems = [];
+function hlq(text, q) {
+  const f = C.fold(text), words = C.fold(q).split(/\s+/).filter(Boolean);
+  if (!words.length || f.length !== text.length) return esc(text);
+  const on = new Array(text.length).fill(false);
+  for (const w of words) { const re = new RegExp(C.wordStart(w).source, 'g'); let m; while ((m = re.exec(f))) { const i = m.index + m[1].length; for (let k = i; k < i + w.length; k++) on[k] = true; if (re.lastIndex === m.index) re.lastIndex++; } }
+  let out = '', open = false;
+  for (let i = 0; i < text.length; i++) { if (on[i] !== open) { out += on[i] ? '<mark>' : '</mark>'; open = on[i]; } out += esc(text[i]); }
+  return out + (open ? '</mark>' : '');
+}
+function noteHit(t, q) {
+  const words = C.fold(q).split(/\s+/).filter(Boolean), line = t.notes.find(n => words.some(w => C.wordStart(w).test(C.fold(n)))) || '';
+  return line.trim().slice(0, 120);
+}
+function palResults(q) {
+  const doc = currentDoc(), words = C.fold(q).split(/\s+/).filter(Boolean), items = [];
+  if (!words.length) return items;
+  for (const s of doc.sections) if (words.every(w => C.wordStart(w).test(C.fold(s.name)))) items.push({ kind: 'list', name: s.name });
+  for (const r of C.searchTasks(doc, q).slice(0, 50)) items.push({ kind: 'task', r });
+  items.push({ kind: 'add', title: q.trim() });
+  return items;
+}
+function paintPalette() {
+  const q = $('#palInput').value, doc = currentDoc();
+  palItems = palResults(q);
+  palSel = Math.max(0, Math.min(palSel, palItems.length - 1));
+  let h = '', sec = null;
+  palItems.forEach((it, i) => {
+    const k = it.kind === 'list' ? 'Lists' : it.kind === 'add' ? 'New task' : it.r.task.checked ? 'Done' : 'Tasks';
+    if (k !== sec) { h += `<div class="pal-sec">${k}</div>`; sec = k; }
+    const sel = i === palSel ? ' sel' : '';
+    if (it.kind === 'list') {
+      const s = doc.sections.find(x => x.name === it.name);
+      h += `<button type="button" class="pal-item${sel}" data-i="${i}" role="option"><span class="pal-ck pal-go" style="--c:${listColor(it.name)}"></span><span class="pal-b"><span class="pal-t">Go to ${hlq(it.name, q)}</span></span><span class="pal-w">${C.allTasks({ sections: [s] }).filter(x => !x.task.checked).length} open</span></button>`;
+    } else if (it.kind === 'add') {
+      h += `<button type="button" class="pal-item${sel}" data-i="${i}" role="option"><span class="pal-ck pal-plus">+</span><span class="pal-b"><span class="pal-t">Add « ${esc(it.title)} »</span></span><span class="pal-w">Inbox</span></button>`;
+    } else {
+      const x = it.r, t = x.task, d = t.checked ? null : dueOf(x);
+      const meta = [x.list, t.checked ? (t.done ? 'done ' + dayLabel(t.done) : 'done') : d ? dayLabel(d) + (t.at ? ' · ' + t.at : '') : ''].filter(Boolean).join(' · ');
+      h += `<button type="button" class="pal-item${sel}${t.checked ? ' done' : ''}" data-i="${i}" role="option"><span class="pal-ck${t.checked ? ' pal-done' : ''}" style="--c:${listColor(x.list)}"></span><span class="pal-b"><span class="pal-t">${hlq(t.title, q)}</span>${x.inNote ? `<span class="pal-n">${hlq(noteHit(t, q), q)}</span>` : ''}</span><span class="pal-w">${esc(meta)}</span></button>`;
+    }
+  });
+  $('#palList').innerHTML = h || `<div class="pal-empty">Type a few letters of a task or a list.</div>`;
+}
+// The phone card sits on the keyboard (round 2, choice C): the keyboard height and the visible height come from visualViewport.
+function palFit() {
+  const vv = window.visualViewport; if (!vv) return;
+  pal.style.setProperty('--kb', Math.max(0, innerHeight - vv.height - vv.offsetTop) + 'px');
+  pal.style.setProperty('--vvh', vv.height + 'px');
+}
+window.visualViewport?.addEventListener('resize', () => { if (pal.open) palFit(); });
+window.visualViewport?.addEventListener('scroll', () => { if (pal.open) palFit(); });
+function openPalette() {
+  if (pal.open) return $('#palInput').focus();
+  $('#palInput').value = ''; palSel = 0; paintPalette();
+  pal.showModal(); palFit(); $('#palInput').focus();
+}
+function palPick(i) {
+  const it = palItems[i]; if (!it) return;
+  pal.close();
+  if (it.kind === 'list') return setView('list:' + it.name);
+  if (it.kind === 'add') { if (it.title) { commit({ type: 'add', id: C.newId(), title: it.title, list: 'Inbox' }); toast('Added to Inbox'); } return; }
+  setView('list:' + it.r.list); // the task opens where it lives
+  openTask(it.r.task.id);
+  document.querySelector(`#list .task[data-id="${it.r.task.id}"]`)?.scrollIntoView({ block: 'center' });
+}
+function palMove(d) {
+  if (!palItems.length) return;
+  palSel = (palSel + d + palItems.length) % palItems.length;
+  for (const b of $('#palList').querySelectorAll('.pal-item')) b.classList.toggle('sel', +b.dataset.i === palSel);
+  $('#palList').querySelector('.pal-item.sel')?.scrollIntoView({ block: 'nearest' });
+}
+$('#palInput').addEventListener('input', () => { palSel = 0; paintPalette(); });
+$('#palInput').addEventListener('keydown', e => {
+  if (e.key === 'ArrowDown') { e.preventDefault(); palMove(1); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); palMove(-1); }
+  else if (e.key === 'Enter') { e.preventDefault(); palPick(palSel); }
+});
+$('#palList').addEventListener('click', e => { const b = e.target.closest('.pal-item'); if (b) palPick(+b.dataset.i); });
+$('#palList').addEventListener('pointermove', e => { const b = e.target.closest('.pal-item'); if (b && +b.dataset.i !== palSel && e.pointerType === 'mouse') { palSel = +b.dataset.i; palMove(0); } });
+$('#palCancel').addEventListener('click', () => pal.close());
+pal.addEventListener('click', e => { if (e.target === pal) pal.close(); }); // a click or a tap on the dim page around the card closes it
+
 // ---------- keyboard ----------
 // The « Group by » menu closes on a click outside it or on Esc.
 // View options closes on a click outside it or on Esc.
 document.addEventListener('click', e => { if (st.optsOpen && e.target.isConnected && !e.target.closest('#viewOpts, #optsBtn')) { st.optsOpen = false; paintViewOpts(); } });
 document.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') { e.preventDefault(); return pal.open ? pal.close() : openPalette(); } // story L25, from anywhere
   if (e.target.matches('input, textarea, select')) return;
   if (st.optsOpen && e.key === 'Escape') { st.optsOpen = false; return paintViewOpts(); }
   // Docked panel: Esc closes, arrows move to the previous or next task.
@@ -1454,7 +1544,8 @@ document.addEventListener('keydown', e => {
     }
   }
   if (document.querySelector('dialog[open]:not(.docked)')) return;
-  if (e.key === 'n' || e.key === '/') { e.preventDefault(); openAdd(); }
+  if (e.key === 'n') { e.preventDefault(); openAdd(); }
+  if (e.key === '/') { e.preventDefault(); openPalette(); } // story L25: / searches, n adds
   // 1 to 5 pick an Agenda range; m opens Matrix.
   const r = RANGES[+e.key - 1];
   if (r && /^[1-5]$/.test(e.key)) setRange(r.id);

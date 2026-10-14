@@ -186,6 +186,27 @@ export function serialize(doc) {
 }
 
 // ---------- queries ----------
+// Search (story L25, the command palette): every word must start a word of the title, a tag, the list name or the notes.
+// Case and accents do not count (« pre » finds « Pré-flight », « dan » finds « Dan Tech », not « DESCENDANT »).
+// The best matches come first: a title that starts with a word, then a word of the title, then a tag, the list or the notes.
+// Open tasks come before done ones. inNote: a word matched only the notes, so the palette shows a snippet of them.
+export const fold = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+export const wordStart = w => new RegExp('(^|[^a-z0-9])' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+export function searchTasks(doc, q) {
+  const words = fold(q).split(/\s+/).filter(Boolean);
+  if (!words.length) return [];
+  const res = [];
+  for (const x of allTasks(doc)) {
+    const t = x.task, T = fold(t.title), N = fold(t.notes.join(' '));
+    const hay = [T, t.tags.map(g => '#' + fold(g)).join(' '), fold(x.list), N].join(' ');
+    const re = words.map(wordStart);
+    if (!re.every(r => r.test(hay))) continue;
+    let score = 0;
+    words.forEach((w, i) => { score += T.startsWith(w) ? 6 : re[i].test(T) ? 4 : 1; });
+    res.push({ ...x, score, inNote: re.some(r => !r.test(T) && r.test(N)) });
+  }
+  return res.sort((a, b) => (a.task.checked - b.task.checked) || b.score - a.score || (a.task.due || '9999').localeCompare(b.task.due || '9999'));
+}
 // A task's group is the last ### heading above it in its list; '' when there is none.
 export function allTasks(doc) {
   const res = [];

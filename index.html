@@ -80,7 +80,7 @@
         </div>
         <div class="set-group">
           <h2>About</h2>
-          <div class="set-card"><div class="set-row"><span>Version</span><span class="set-note mono"><span id="appVersion">2026-10-14 20:57 · acb31a9</span></span></div></div>
+          <div class="set-card"><div class="set-row"><span>Version</span><span class="set-note mono"><span id="appVersion">2026-10-14 21:43 · c269ecb</span></span></div></div>
         </div>
       </form>
     </section>
@@ -137,10 +137,16 @@
       <div class="chips preview" id="addPreview"></div>
     </form>
     <nav class="tabbar" id="tabbar" aria-label="Views"></nav>
-    <button class="fab" id="fab" aria-label="Add a task" title="Add a task (n)"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
+    <button class="fab" id="fab" aria-label="Search" title="Search (/ or ⌘K)"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
   </main>
 </div>
 
+<!-- Command palette (story L25, round 1 choice B): one search over every list; on the phone the round button opens it. -->
+<dialog id="palette" class="palette" aria-label="Search">
+  <div class="pal-head"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="palInput" placeholder="Search tasks and lists" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go"><button type="button" class="pal-cancel" id="palCancel">Cancel</button></div>
+  <div class="pal-list" id="palList" role="listbox"></div>
+  <div class="pal-foot"><span><kbd>↑</kbd><kbd>↓</kbd> move</span><span><kbd>↵</kbd> open</span><span><kbd>esc</kbd> close</span><span class="grow"></span><span>Done tasks come last</span></div>
+</dialog>
 <dialog id="sheet" class="sheet">
   <form method="dialog" id="sheetForm">
     <div class="sheet-nav">
