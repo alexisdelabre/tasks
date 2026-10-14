@@ -1154,16 +1154,16 @@ const isStkList = list => (window.__stickies || []).includes(list);
 function paintWin(list = $('#fList').value) {
   const type = C.listTypeOf(currentDoc().sections.find(s => s.name === list));
   const stk = isStkList(list), show = type === 'tasks' || stk;
-  // Story L24: « Not before » makes the date and hour a start, on a task list only, with both a date and an hour. A deadline
-  // window starts at its date when it has one (L15): « Not before », greyed out; with no date it is open now: « Anytime », greyed out.
-  const sr = C.startRow({ due: $('#fDue').value || null, at: $('#fAt').value || null, by: $('#fBy').value || null, fixed: editing.fixed }, type), canFix = sr.editable;
-  for (const b of $('#fFixed').children) { b.classList.toggle('on', (b.dataset.x === '1') === sr.on); b.disabled = !canFix; }
-  $('#fixedRow').title = canFix ? '' : type !== 'tasks' ? 'Only a task has a start.' : $('#fBy').value ? (sr.on ? 'A deadline window starts at its date.' : 'No date: the window is open now.') : 'Set a date and a reminder hour first.';
+  // Story L24: the Start row, from the core (startRow). « Anytime » stays pressable on a task; on a deadline window it clears the
+  // Date (open now). « Not before » needs a Date with a deadline, else a Date and a Reminder hour; the hint says why when it is greyed out.
+  const sr = C.startRow({ due: $('#fDue').value || null, at: $('#fAt').value || null, by: $('#fBy').value || null, fixed: editing.fixed }, type);
+  for (const b of $('#fFixed').querySelectorAll('button')) { const nb = b.dataset.x === '1'; b.classList.toggle('on', nb === sr.on); b.disabled = !(nb ? sr.notBefore : sr.anytime); }
+  $('#fFixedHint').textContent = sr.hint;
   $('#dlBlock').hidden = !show;
   for (const el of [$('#fDue'), $('#fAt'), ...document.querySelectorAll('.quick-dates button')]) el.disabled = stk;
   $('#startRow').title = stk ? 'A sticky has no start: set its Deadline above.' : '';
   if (!show) return;
-  const by = $('#fBy').value, off = by ? '' : ' disabled', offE = by || (canFix && editing.fixed) ? '' : ' disabled'; // L24: an estimate on a fixed start too
+  const by = $('#fBy').value, off = by ? '' : ' disabled', offE = by || (sr.on && sr.notBefore) ? '' : ' disabled'; // L24: an estimate on a fixed start too
   for (const b of $('#fFirm').children) { b.classList.toggle('on', (b.dataset.f === '1') === editing.firm); b.disabled = !by; }
   const m = MARGINS.includes(editing.margin) ? MARGINS : [...MARGINS, editing.margin];
   $('#fMargin').innerHTML = m.map(v => `<button type="button" data-m="${v}" class="${v === editing.margin ? 'on' : ''}"${off}>${v ? v.replace(/(\d+)([hd])/, '$1 $2') : 'None'}</button>`).join('');
@@ -1250,7 +1250,12 @@ $('#fNotes').addEventListener('input', e => autoGrow(e.target));
 $('#fStreak').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { editing.streakOn = b.dataset.on === '1'; paintStreak($('#fList').value); } });
 // These button rows sit inside a <label>: a repaint during the click detaches the button, and the label then forwards the
 // click to its first button (None). So the click is cancelled and the repaint waits for the end of the click.
-$('#fFixed').addEventListener('click', e => { e.preventDefault(); const b = e.target.closest('button'); if (b && !b.disabled) { editing.fixed = b.dataset.x === '1'; setTimeout(() => paintWin()); } });
+$('#fFixed').addEventListener('click', e => {
+  e.preventDefault(); const b = e.target.closest('button'); if (!b || b.disabled) return;
+  editing.fixed = b.dataset.x === '1' && !$('#fBy').value; // a window already starts at its Date: no flag to set
+  if (!editing.fixed && $('#fBy').value && b.dataset.x === '0') { $('#fDue').value = ''; $('#fAt').value = ''; paintDates(); } // a window with no start: open now
+  setTimeout(() => paintWin());
+});
 $('#fFirm').addEventListener('click', e => { e.preventDefault(); const b = e.target.closest('button'); if (b && !b.disabled) { editing.firm = b.dataset.f === '1'; setTimeout(() => paintWin()); } });
 $('#fState').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { editing.doing = b.dataset.s === '1'; paintState(); } });
 $('#fGroup').addEventListener('change', e => {
@@ -1525,6 +1530,14 @@ setInterval(() => { if (document.visibilityState === 'visible' && !st.pending.le
 // Midnight rolls "Today" over.
 let lastDay = today();
 setInterval(() => { if (today() !== lastDay) { lastDay = today(); DEMO ? loadDemo().then(render) : render(); } }, 30_000);
+// Story L27: an Anytime task sits at the current hour. When the hour of an open task of today passes, that task moves above
+// the Anytime ones: render again, unless the edit panel is open (the next change or sync sorts it).
+let lastHm = C.nowTimeIn();
+setInterval(() => {
+  const hm = C.nowTimeIn(), td = today(), was = lastHm; lastHm = hm;
+  if (hm < was || document.visibilityState !== 'visible' || editing) return;
+  if (C.allTasks(currentDoc()).some(x => !x.task.checked && x.task.due === td && x.task.at && x.task.at > was && x.task.at <= hm)) render();
+}, 30_000);
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 

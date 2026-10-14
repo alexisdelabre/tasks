@@ -175,7 +175,7 @@ dialog h2 { margin: 0; font-size: 18px; }
 .title-input { flex: 1; border: 0; outline: 0; resize: none; font-size: 19px; font-weight: 600; background: transparent; padding: 4px 0; line-height: 1.35; overflow: hidden; }
 .quick-dates { display: flex; gap: 6px; flex-wrap: wrap; }
 .quick-dates button, .prio-pick button, .sheet-foot button:not(.primary):not(.danger) { padding: 6px 10px; border-radius: 8px; background: var(--bg2); font-size: 13px; color: var(--ink2); }
-@media (hover: hover) { .quick-dates button:hover, .prio-pick button:hover { background: var(--bg3); } }
+@media (hover: hover) { .quick-dates button:hover, .prio-pick button:not(:disabled):hover { background: var(--bg3); } }
 .quick-dates button.on, .prio-pick button.on { background: var(--accent-soft); color: var(--accent); font-weight: 560; }
 .prio-pick button.p1.on { background: var(--red-soft); color: var(--red); }
 .prio-pick button.p2.on { background: var(--amber-soft); color: var(--amber); }
@@ -616,7 +616,11 @@ body.on-settings .list { display: none; }
 .stk-ico { display: inline-block; width: 13px; height: 13px; border: 1.7px solid currentColor; border-radius: 3.5px; clip-path: polygon(0 0, 100% 0, 100% 62%, 62% 100%, 0 100%); vertical-align: -1px; }
 #dlBlock { margin-top: 10px; }
 .lead-hint { margin: 2px 14px 4px; font-size: 12px; color: var(--ink3); }
-#fLead button:disabled { opacity: .45; cursor: default; }
+/* A greyed-out choice looks greyed out, in every button row of the edit panel (Start, Type, Margin, Estimate…). */
+.prio-pick button:disabled { opacity: .4; cursor: default; }
+/* Why « Not before » is greyed out, in plain text: the phone has no hover (story L24). */
+.row-hint { align-self: center; font-size: 12px; color: var(--ink3); }
+.row-hint:empty { display: none; }
 
 /* ---------- window tasks (story L15, round 1 variant B) ---------- */
 /* The bar: the window in the accent (start → act by), the margin hatched red (act by → deadline), a mark at now. */

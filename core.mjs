@@ -347,11 +347,15 @@ export function dayOf(t, tz = TZ) { return t.due || (t.by ? actBy(t, tz) : null)
 // its start. A deadline window already starts at its date (L15); a sticky, a habit or a stock item has no start of its own.
 export const startAllowed = (t, type = 'tasks') => type === 'tasks' && !t.by && !!(t.due && t.at);
 export const fixedStart = (t, type = 'tasks') => !!t.fixed && startAllowed(t, type);
-// The Start row of the edit panel: « Not before » (on) or « Anytime », and whether the user can change it. With a deadline
-// the window decides: a date makes it « Not before », no date makes it open now.
+// The Start row of the edit panel: « Not before » (on) or « Anytime », which button the user can press, and the hint that says
+// why the other one is greyed out (the phone has no hover). Only a task list has the row live. « Anytime » stays pressable on
+// any task: on a deadline window it clears the Date (open now). « Not before » needs a Date with a deadline (the window starts
+// at it, L15), else a Date and a Reminder hour (L24). The rule of startAllowed and phase does not change: this is the panel only.
 export function startRow(t, type = 'tasks') {
-  const editable = startAllowed(t, type);
-  return { on: type === 'tasks' && t.by ? !!t.due : !!(t.fixed && editable), editable };
+  if (type !== 'tasks') return { on: false, anytime: false, notBefore: false, hint: 'Only a task has a start.' };
+  if (t.by) return { on: !!t.due, anytime: true, notBefore: !!t.due, hint: t.due ? '' : 'Set a Date first.' };
+  const ok = startAllowed(t, type);
+  return { on: !!(t.fixed && ok), anytime: true, notBefore: ok, hint: ok ? '' : t.due ? 'Set a Reminder hour first.' : 'Set a Date and a Reminder hour first.' };
 }
 // before (not yet), window (act now), margin (act by passed, deadline ahead), missed; null with no deadline.
 // A fixed start with no deadline is « before » until its start, then a plain task (null).
@@ -521,9 +525,11 @@ export function apply(doc, op, today = todayIn()) {
         if (log && !t.notes.some(n => HABIT_LOG_RE.test(n))) t.notes.push(log); // the history survives a notes edit
       }
       if (t.every && !t.due) t.due = today;
-      if (t.fixed && !startAllowed(t, listTypeOf(f.section))) t.fixed = false; // no dead ~start (L24)
-      dirty(t);
       const toList = p.list && p.list.toLowerCase() !== f.section.name.toLowerCase();
+      // no dead ~start (L24): the list the task ends in decides, so a move to a habits or stickies list drops the flag
+      const dest = toList ? doc.sections.find(x => x.name.toLowerCase() === p.list.toLowerCase()) : f.section;
+      if (t.fixed && !startAllowed(t, dest ? listTypeOf(dest) : 'tasks')) t.fixed = false;
+      dirty(t);
       const toGroup = 'group' in p && (p.group || '').toLowerCase() !== f.group.toLowerCase();
       if (toList || toGroup) {
         // A task moves with its notes: they are part of the task item.
@@ -764,10 +770,18 @@ export function reminderEpoch(t, tz = TZ) {
   return zonedToEpoch(t.due, t.at, tz);
 }
 
-export function sortTasks(a, b) {
-  const da = a.task.due ?? '9999', db = b.task.due ?? '9999';
-  if (da !== db) return da < db ? -1 : 1;
-  const ta = a.task.at ?? '99', tb = b.task.at ?? '99';
-  if (ta !== tb) return ta < tb ? -1 : 1;
-  return (a.task.prio || 9) - (b.task.prio || 9);
+// Order of tasks: by day, then by hour inside a day. An Anytime task (no hour) sits at the current hour (story L27): today it
+// comes after the tasks whose hour has passed and before the ones to come; on a later day, no hour has passed, so it goes
+// first; on a past day every hour has passed, so it goes last. At the same minute the task with the hour comes first.
+export function sortTasksAt(now = Date.now(), tz = TZ) {
+  const td = todayIn(tz, now), hm = nowTimeIn(tz, now);
+  const slot = t => t.at ? [t.at, 0] : [t.due > td ? '' : t.due < td ? '99' : hm, 1];
+  return (a, b) => {
+    const da = a.task.due ?? '9999', db = b.task.due ?? '9999';
+    if (da !== db) return da < db ? -1 : 1;
+    const [ta, ra] = slot(a.task), [tb, rb] = slot(b.task);
+    if (ta !== tb) return ta < tb ? -1 : 1;
+    return ra - rb || (a.task.prio || 9) - (b.task.prio || 9);
+  };
 }
+export function sortTasks(a, b) { return sortTasksAt()(a, b); }
