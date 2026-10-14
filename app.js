@@ -300,7 +300,7 @@ function taskHTML({ task: t, list }, { showList = true, showDate = true, drag = 
   if (ch.tags) for (const tag of t.tags) if (tag !== hideTag) chips.push(`<span class="chip tag">#${esc(tag)}</span>`);
   if (t.checked && t.done) chips.push(`<span class="chip">✓ ${esc(dayLabel(t.done))}</span>`);
   // A window task (story L15): « window too short » in amber when start + estimate passes act by.
-  const ph = !stk && t.by && !t.checked ? C.phase(t) : null;
+  const ph = !stk && (t.by || C.fixedStart(t)) && !t.checked ? C.phase(t) : null; // L24: a fixed start fades before it opens
   if (ph && ph !== 'missed' && C.tooShort(t)) chips.push(`<span class="chip warn">Window too short · ${C.estLabel(t.est)}</span>`);
   if (!stk && t.by && t.firm && !t.checked) chips.push(`<span class="chip firm">Firm</span>`); // a task deadline can be firm too
   const bar = !stk && t.by ? winBar(t, ph) : '';
@@ -593,7 +593,7 @@ function listsNav(lists, typeOf, countOf, withInbox = true) {
 // The day a row belongs to (story L15): its start, else its act-by day. A window task still open after its start day
 // moves to today; one past act by (margin or missed) counts as overdue, so it shows red at the top.
 const isWin = x => !!x.task.by && !x.task.checked && !(window.__stickies || []).includes(x.list);
-const winPhase = x => isWin(x) ? C.phase(x.task) : null;
+const winPhase = x => isWin(x) || (C.fixedStart(x.task) && !x.task.checked) ? C.phase(x.task) : null; // L24: a fixed start too
 // Story L19: before its window opens, a task cannot be done yet. Matrix and Lanes (do-now views) leave it out;
 // Agenda, List and Board (plan views) keep it.
 const notYet = x => winPhase(x) === 'before';
@@ -932,7 +932,7 @@ $('#addForm').addEventListener('submit', e => {
   e.preventDefault();
   const q = parsedInput();
   if (!q || !q.title) return;
-  commit({ type: 'add', id: C.newId(), title: q.title, list: q.list, due: q.due, at: q.at, every: q.every, prio: q.prio, tags: q.tags, firm: q.firm, lead: q.lead, leadH: q.leadH, by: q.by, est: q.est });
+  commit({ type: 'add', id: C.newId(), title: q.title, list: q.list, due: q.due, at: q.at, every: q.every, prio: q.prio, tags: q.tags, firm: q.firm, fixed: q.fixed, lead: q.lead, leadH: q.leadH, by: q.by, est: q.est });
   $('#addInput').value = '';
   updatePreview();
 });
@@ -1153,21 +1153,27 @@ const isStkList = list => (window.__stickies || []).includes(list);
 function paintWin(list = $('#fList').value) {
   const type = C.listTypeOf(currentDoc().sections.find(s => s.name === list));
   const stk = isStkList(list), show = type === 'tasks' || stk;
+  // Story L24: « Not before » makes the date and hour a start, on a task list only, with both a date and an hour. A deadline
+  // window always starts at its date (L15): the row then shows « Not before », greyed out. Greyed out, never hidden.
+  const hasBy = type === 'tasks' && !!$('#fBy').value, canFix = type === 'tasks' && !hasBy && !!($('#fDue').value && $('#fAt').value);
+  for (const b of $('#fFixed').children) { b.classList.toggle('on', (b.dataset.x === '1') === (hasBy || !!(editing.fixed && canFix))); b.disabled = !canFix; }
+  $('#fixedRow').title = canFix ? '' : hasBy ? 'A deadline window always starts at its date.' : type !== 'tasks' ? 'Only a task has a start.' : 'Set a date and a reminder hour first.';
   $('#dlBlock').hidden = !show;
   for (const el of [$('#fDue'), $('#fAt'), ...document.querySelectorAll('.quick-dates button')]) el.disabled = stk;
   $('#startRow').title = stk ? 'A sticky has no start: set its Deadline above.' : '';
   if (!show) return;
-  const by = $('#fBy').value, off = by ? '' : ' disabled';
+  const by = $('#fBy').value, off = by ? '' : ' disabled', offE = by || (canFix && editing.fixed) ? '' : ' disabled'; // L24: an estimate on a fixed start too
   for (const b of $('#fFirm').children) { b.classList.toggle('on', (b.dataset.f === '1') === editing.firm); b.disabled = !by; }
   const m = MARGINS.includes(editing.margin) ? MARGINS : [...MARGINS, editing.margin];
   $('#fMargin').innerHTML = m.map(v => `<button type="button" data-m="${v}" class="${v === editing.margin ? 'on' : ''}"${off}>${v ? v.replace(/(\d+)([hd])/, '$1 $2') : 'None'}</button>`).join('');
   const e = ESTS.includes(editing.est) ? ESTS : [...ESTS, editing.est].sort((a, b) => a - b);
-  $('#fEst').innerHTML = e.map(v => `<button type="button" data-e="${v}" class="${v === editing.est ? 'on' : ''}"${off}>${v ? C.estLabel(v).replace(/(\d+)([hm])/g, '$1 $2 ').trim() : 'None'}</button>`).join('');
-  const t = { due: stk ? null : $('#fDue').value || null, at: !stk && $('#fDue').value && $('#fAt').value || null, by: winBy(), ...C.parseLead(editing.margin), est: editing.est || null };
+  $('#fEst').innerHTML = e.map(v => `<button type="button" data-e="${v}" class="${v === editing.est ? 'on' : ''}"${offE}>${v ? C.estLabel(v).replace(/(\d+)([hm])/g, '$1 $2 ').trim() : 'None'}</button>`).join('');
+  const t = { due: stk ? null : $('#fDue').value || null, at: !stk && $('#fDue').value && $('#fAt').value || null, fixed: !!editing.fixed, by: winBy(), ...C.parseLead(editing.margin), est: editing.est || null };
   const when = (d, h) => shortDate(d) + (h ? ' · ' + h : '');
   const hint = $('#winHint');
   hint.classList.toggle('warn', !!(t.by && C.tooShort(t)));
-  hint.textContent = !t.by ? (stk ? 'Set the date not to pass. A margin then gives the act-by date.' : 'Set a deadline to give the task a window: start (Date + Reminder), act by, deadline.')
+  hint.textContent = C.fixedStart(t) ? `Fixed start: opens ${when(t.due, t.at)}${t.est ? ', about ' + C.estLabel(t.est) : ''}. No deadline.`
+    : !t.by ? (stk ? 'Set the date not to pass. A margin then gives the act-by date.' : 'Set a deadline to give the task a window: start (Date + Reminder), act by, deadline.')
     : `Act by ${when(C.actBy(t), C.actByTime(t))}.`
       + (t.due ? ` Window from ${when(t.due, t.at)}.` : stk ? (t.lead || t.leadH ? ' The horizon line shows this date, not the deadline.' : ' No margin: the horizon line shows the deadline.') : ' No start: the window opens now.')
       + (C.tooShort(t) ? ` Too short for ${C.estLabel(t.est)}: start earlier.` : '');
@@ -1200,6 +1206,7 @@ function openTask(id) {
   $('#sheetCheck').className = 'check big' + (t.checked ? ' on' : '') + (t.prio ? ' p' + t.prio : '');
   editing.streakOn = t.streak !== 'off';
   editing.firm = !!t.firm;
+  editing.fixed = !!t.fixed;
   editing.margin = leadStr(t);
   editing.est = t.est || 0;
   paintStreak(f.section.name);
@@ -1242,6 +1249,7 @@ $('#fNotes').addEventListener('input', e => autoGrow(e.target));
 $('#fStreak').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { editing.streakOn = b.dataset.on === '1'; paintStreak($('#fList').value); } });
 // These button rows sit inside a <label>: a repaint during the click detaches the button, and the label then forwards the
 // click to its first button (None). So the click is cancelled and the repaint waits for the end of the click.
+$('#fFixed').addEventListener('click', e => { e.preventDefault(); const b = e.target.closest('button'); if (b && !b.disabled) { editing.fixed = b.dataset.x === '1'; setTimeout(() => paintWin()); } });
 $('#fFirm').addEventListener('click', e => { e.preventDefault(); const b = e.target.closest('button'); if (b && !b.disabled) { editing.firm = b.dataset.f === '1'; setTimeout(() => paintWin()); } });
 $('#fState').addEventListener('click', e => { const b = e.target.closest('button'); if (b) { editing.doing = b.dataset.s === '1'; paintState(); } });
 $('#fGroup').addEventListener('change', e => {
@@ -1300,7 +1308,7 @@ $('#deleteBtn').addEventListener('click', () => {
   editing.deleted = true;
   sheet.close();
   commit({ type: 'delete', id });
-  toast('Deleted', () => commit({ type: 'add', id, title: orig.title, list: orig.list, due: orig.due, at: orig.at, every: orig.every, prio: orig.prio, tags: orig.tags, notes: full ? full.notes.join('\n') : orig.notes, streak: full?.streak ?? null, firm: orig.firm, by: full?.by ?? null, lead: full ? leadStr(full) || null : null, est: full?.est ?? null }));
+  toast('Deleted', () => commit({ type: 'add', id, title: orig.title, list: orig.list, due: orig.due, at: orig.at, every: orig.every, prio: orig.prio, tags: orig.tags, notes: full ? full.notes.join('\n') : orig.notes, streak: full?.streak ?? null, firm: orig.firm, fixed: orig.fixed, by: full?.by ?? null, lead: full ? leadStr(full) || null : null, est: full?.est ?? null }));
 });
 sheet.addEventListener('close', () => { if (!editing?.skip) saveEdit(); editing = null; document.body.classList.remove('panel-open'); markSelected(); writeHash(); });
 sheet.addEventListener('click', e => { if (e.target === sheet) sheet.close(); }); // backdrop
@@ -1323,9 +1331,10 @@ function saveEdit() {
     doing: editing.doing,
     streak: !$('#streakRow').hidden && !editing.streakOn ? 'off' : o.streak === 'off' && editing.streakOn ? null : o.streak,
     firm: editing.firm,
+    fixed: !!(editing.fixed && $('#fDue').value && $('#fAt').value && !$('#fBy').value && !isStkList($('#fList').value)), // L24: a start needs a date and an hour; a deadline makes it redundant
     lead: editing.margin || null,
   };
-  if (!$('#dlBlock').hidden) { next.by = winBy(); next.est = next.by ? editing.est || null : null; if (!next.by) { next.lead = null; next.firm = false; } }
+  if (!$('#dlBlock').hidden) { next.by = winBy(); next.est = next.by || next.fixed ? editing.est || null : null; if (!next.by) { next.lead = null; next.firm = false; } }
   if (isStkList(next.list)) { next.due = o.due ?? null; next.at = o.at ?? null; } // a sticky has no start: its greyed Date stays as it was
   const patch = {};
   for (const k of Object.keys(next)) {

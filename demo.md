@@ -49,6 +49,8 @@ Demo file. Each `## heading` is a list, each `### heading` is a section. One tas
   Start + estimate is after act by: the amber chip says the window is too short. Move the start earlier.
 - [ ] Pay the monthly bills due:2026-11-02 by:2026-11-04 est:2h every:1wd ^win06
   First office day of the month, deadline the 4th. Done: the start moves to the next first office day, the deadline to the 4th of that month.
+- [ ] Restart the home server due:2026-10-11 at:20:00 ~start est:1h !2 ^win07
+  A fixed start with no deadline (story L24): the flag ~start (Start « Not before » in the panel) makes the date and hour a start. It opens tomorrow at 20:00: faded until then, out of Matrix and Lanes. After the start, a plain task.
 
 ## Stickies ~stickies color:#64748b/slate
 - [ ] Renew the ID card before the trip by:2026-10-14 ~firm ^demo60

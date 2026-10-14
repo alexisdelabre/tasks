@@ -51,6 +51,7 @@ const TOKEN = {
   tag: /^#([\p{L}\p{N}_\/-]+)$/u,
   id: /^\^([a-z0-9]{3,10})$/,
   firm: /^~firm$/,
+  fixed: /^~start$/,
   lead: /^lead:(\d{1,3})([dh])$/,
   by: /^by:(\d{4}-\d{2}-\d{2})(?:T(\d{1,2}:\d{2}))?$/,
   est: /^est:(?:(\d{1,2})h)?(?:(\d{1,3})m)?$/,
@@ -68,7 +69,7 @@ export function newId() {
 
 // ---------- parse ----------
 export function parseTaskLine(text) {
-  const t = { title: '', due: null, at: null, every: null, streak: null, done: null, prio: 0, tags: [], id: null, firm: false, lead: null, leadH: null, by: null, est: null };
+  const t = { title: '', due: null, at: null, every: null, streak: null, done: null, prio: 0, tags: [], id: null, firm: false, fixed: false, lead: null, leadH: null, by: null, est: null };
   const words = [];
   for (const w of text.split(/\s+/).filter(Boolean)) {
     let m;
@@ -81,6 +82,7 @@ export function parseTaskLine(text) {
     else if ((m = w.match(TOKEN.tag))) t.tags.push(m[1]);
     else if ((m = w.match(TOKEN.id))) t.id = m[1];
     else if (TOKEN.firm.test(w)) t.firm = true;
+    else if (TOKEN.fixed.test(w)) t.fixed = true;
     else if ((m = w.match(TOKEN.lead))) { if (m[2] === 'h') t.leadH = +m[1] || null; else t.lead = +m[1] || null; }
     else if ((m = w.match(TOKEN.by))) t.by = m[2] ? `${m[1]}T${m[2].padStart(5, '0')}` : m[1];
     else if ((m = w.match(TOKEN.est)) && (m[1] || m[2])) t.est = (+m[1] || 0) * 60 + (+m[2] || 0) || null;
@@ -155,6 +157,7 @@ export function taskLine(t) {
   const parts = [`- [${t.checked ? 'x' : t.doing ? '/' : ' '}]`, t.title];
   if (t.due) parts.push('due:' + t.due);
   if (t.at) parts.push('at:' + t.at);
+  if (t.fixed) parts.push('~start');
   if (t.by) parts.push('by:' + t.by);
   if (t.firm) parts.push('~firm');
   if (t.leadH) parts.push(`lead:${t.leadH}h`); else if (t.lead) parts.push(`lead:${t.lead}d`);
@@ -335,13 +338,17 @@ export function actByEpoch(t, tz = TZ) {
   return base - (t.leadH || 0) * 3600e3;
 }
 // The day to act by: the deadline minus the margin; with no deadline, the start day (a plain task).
-export function actBy(t, tz = TZ) { return t.by ? todayIn(tz, actByEpoch(t, tz) - 1) : t.due; }
+// A day deadline ends at midnight, so its act-by day is the day before; a deadline at an hour keeps its day (story M5).
+export function actBy(t, tz = TZ) { return t.by ? todayIn(tz, actByEpoch(t, tz) - (byTime(t) ? 0 : 1)) : t.due; }
 export function actByTime(t, tz = TZ) { return t.by && (byTime(t) || t.leadH) ? nowTimeIn(tz, actByEpoch(t, tz)) : null; }
 // The day a task belongs to in the Agenda, the counts and the digest: its start, else its act-by day.
 export function dayOf(t, tz = TZ) { return t.due || (t.by ? actBy(t, tz) : null); }
+// A fixed start with no deadline (story L24): the token ~start on a task with a date and an hour. It opens at its start.
+export const fixedStart = t => !t.by && !!(t.fixed && t.due && t.at);
 // before (not yet), window (act now), margin (act by passed, deadline ahead), missed; null with no deadline.
+// A fixed start with no deadline is « before » until its start, then a plain task (null).
 export function phase(t, now = Date.now(), tz = TZ) {
-  if (!t.by) return null;
+  if (!t.by) return fixedStart(t) && now < startEpoch(t, tz) ? 'before' : null;
   const s = startEpoch(t, tz);
   if (s !== null && now < s) return 'before';
   if (now < actByEpoch(t, tz)) return 'window';
@@ -468,7 +475,7 @@ export function apply(doc, op, today = todayIn()) {
   switch (op.type) {
     case 'add': {
       const t = { kind: 'task', id: op.id || newId(), title: op.title.trim(), due: op.due || null, at: op.at || null, every: op.every || null,
-        prio: op.prio || 0, tags: op.tags || [], firm: !!op.firm, ...parseLead(op.leadH ? op.leadH + 'h' : op.lead), by: op.by || null, est: parseEst(op.est),
+        prio: op.prio || 0, tags: op.tags || [], firm: !!op.firm, fixed: !!op.fixed, ...parseLead(op.leadH ? op.leadH + 'h' : op.lead), by: op.by || null, est: parseEst(op.est),
         checked: false, doing: false, done: null, notes: op.notes ? op.notes.split('\n') : [], raw: null };
       if (isStickies(doc, op.list) && t.due && !t.by) { t.by = t.due; t.due = null; } // a sticky deadline lives in by: (story L15)
       if (isHabits(doc, op.list) && !t.every) t.every = 'day';
@@ -489,6 +496,7 @@ export function apply(doc, op, today = todayIn()) {
       const t = f.task, p = op.patch;
       for (const k of ['title', 'due', 'at', 'every', 'prio', 'tags']) if (k in p) t[k] = p[k];
       if ('firm' in p) t.firm = !!p.firm;
+      if ('fixed' in p) t.fixed = !!p.fixed;
       if ('lead' in p) Object.assign(t, parseLead(p.lead));
       if ('by' in p) t.by = p.by || null;
       if ('est' in p) t.est = parseEst(p.est);
@@ -642,7 +650,7 @@ function nextWeekday(today, wd, strict = true) {
 
 export function parseQuick(input, { today = todayIn(), now = nowTimeIn(), lists = [] } = {}) {
   let s = ' ' + input + ' ';
-  const r = { title: '', due: null, at: null, every: null, prio: 0, tags: [], list: null, firm: false, lead: null, leadH: null, by: null, est: null, spans: [] };
+  const r = { title: '', due: null, at: null, every: null, prio: 0, tags: [], list: null, firm: false, fixed: false, lead: null, leadH: null, by: null, est: null, spans: [] };
   const take = (re, fn) => {
     s = s.replace(re, (...m) => { const v = fn(...m); if (v === false) return m[0]; r.spans.push(m[0].trim()); return ' '; });
   };
@@ -660,6 +668,7 @@ export function parseQuick(input, { today = todayIn(), now = nowTimeIn(), lists 
   take(ci(`${B}due:(\\d{4}-\\d{2}-\\d{2})${E}`), (_, d) => { r.due = d; });
   take(ci(`${B}every:(\\S+)${E}`), (_, e) => { r.every = e; });
   take(ci(`${B}~firm${E}`), () => { r.firm = true; }); // a firm deadline (stickies)
+  take(ci(`${B}~start${E}`), () => { r.fixed = true; }); // a fixed start: not before due + at (L24)
   take(ci(`${B}lead:(\\d{1,3})([dh])${E}`), (_, n, u) => { Object.assign(r, parseLead(n + u)); }); // the margin before the deadline (L11, L15)
   take(ci(`${B}by:(\\d{4}-\\d{2}-\\d{2})(?:T(\\d{1,2}:\\d{2}))?${E}`), (_, d, h) => { r.by = h ? `${d}T${h.padStart(5, '0')}` : d; }); // the deadline (L15)
   take(ci(`${B}est:((?:\\d{1,2}h)?(?:\\d{1,3}m)?)${E}`), (_, v) => { const e = parseEst(v); if (!e) return false; r.est = e; }); // the estimate (L15)
