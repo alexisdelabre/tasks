@@ -98,6 +98,8 @@ Demo file. Each `## heading` is a list, each `### heading` is a section. One tas
 - [ ] 🧹 Tidy up due:2026-10-10 every:day streak:2 #1min ^demo55
   Set a 1-minute timer and put things away until it rings.
   ✓ 2026-10-08 2026-10-09
+- [ ] 🦷 Floss due:2026-10-10 every:day streak:0 #1min ^demo56
+  A fifth habit in the Agenda: with « Can start now » (flag L23) the computer shows 3 rounds and « +2 », the phone 4 dots and « +1 ».
 
 ## Groceries ~stock color:#e2900b/amber
 - [ ] Oat milk ^demo20

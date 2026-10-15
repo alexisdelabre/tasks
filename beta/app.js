@@ -752,6 +752,7 @@ function habitZone(rows) {
 // On the day strip, an amber number at the bottom right of a day counts these tasks to do by that day (today left out).
 const canStart = x => isWin(x) && listTypeByName(x.list) === 'tasks' && winPhase(x) === 'window';
 const daysTo = (d, td) => Math.round((C.fromYmd(d) - C.fromYmd(td)) / 864e5);
+const HD_DESK = 4, HD_PHONE = 5; // rounds in the habits part, « +N » included: 4 on a computer, 5 on the phone line
 const csSecs = j => Math.max(3, Math.min(12, 84 / (j + 7))); // J-0 12 s, J-3 8.4 s, J-7 6 s, J-16 3.7 s, J-21 and later 3 s
 const csSort = rows => rows.sort((x, y) => dueOf(x).localeCompare(dueOf(y)) || (x.task.prio || 4) - (y.task.prio || 4) || x.task.id.localeCompare(y.task.id));
 function csIndex(rows, td, now = Date.now()) {
@@ -761,12 +762,13 @@ function csIndex(rows, td, now = Date.now()) {
   return i;
 }
 let csLast = { rows: [], td: null }; // the rows of the last render, for the rotation timer
-const csJ = (x, td) => { const j = daysTo(dueOf(x), td); return `J-${j} · ${esc(shortDate(dueOf(x)))}`; };
+const csJ = (x, td) => `J-${daysTo(dueOf(x), td)}<span class="cs-jd"> · ${esc(shortDate(dueOf(x)))}</span>`; // the phone card keeps J-x only
 const csRowHTML = (x, td, extra = '') => `<span class="cs-row" data-act="csopen" data-id="${x.task.id}" style="--lc:${listColor(x.list)}"><span class="cs-c"></span><span class="cs-t">${esc(x.task.title)}</span><span class="cs-j${daysTo(dueOf(x), td) <= 7 ? ' soon' : ''}">${csJ(x, td)}</span>${extra}</span>`;
 function canStartHTML(rows, td) {
   const all = st.csAll && rows.length > 1, i = csIndex(rows, td);
   const btn = rows.length > 1 ? `<button class="cs-all" data-act="csall" aria-expanded="${all}">${all ? 'Less' : 'All ' + rows.length}</button>` : '';
-  const dots = rows.length > 1 && rows.length <= 6 && !all ? `<span class="cs-dots">${rows.map((_, k) => `<i class="${k === i ? 'on' : ''}"></i>`).join('')}</span>` : '';
+  // Up to 3 tasks, one dot each; more, a short « 2/8 » that keeps its width.
+  const dots = rows.length < 2 || all ? '' : rows.length <= 3 ? `<span class="cs-dots">${rows.map((_, k) => `<i class="${k === i ? 'on' : ''}"></i>`).join('')}</span>` : `<span class="cs-pos">${i + 1}/${rows.length}</span>`;
   const first = all ? rows[0] : rows[i];
   const rest = all ? rows.slice(1).map(x => `<div class="cs-card">${csRowHTML(x, td)}</div>`).join('') : '';
   return `<div class="cs" aria-label="Can start now, ${rows.length}"><div class="cs-head">Can start now <span class="when">· ${rows.length}</span></div>`
@@ -778,8 +780,15 @@ function canStartZone(habitsDay, rows, td) {
   if (!show.length) return habitThin(later) + `<div class="cs-split solo">${canStartHTML(rows, td)}</div>`;
   const left = show.filter(x => !done(x)).length;
   const when = m ? ` · until ${String(m[2]).padStart(2, '0')}:00` : '';
-  const dot = x => { const d = done(x), t = x.task; return `<button class="hdot${d ? ' done' : ''}${!d && past(x) ? ' carry' : ''}" data-act="hcheck" data-id="${t.id}" style="--lc:${listColor(x.list)}" title="${esc(t.title)}${d ? ' · done today' : ''}">${d ? '' : esc(habitEmoji(t.title))}</button>`; };
-  return `<div class="cs-split"><div class="hmini" data-act="hopen"><span class="hm-t">Habits</span><span class="when">· ${left ? left + ' left' : '✓'}${when}</span><span class="chev">›</span><span class="hdots">${show.map(dot).join('')}</span></div><div class="cs-div"></div>${canStartHTML(rows, td)}</div>`;
+  // At most 4 rounds on a computer (the 30 % part) and 4 dots plus « +N » on the phone line. To do first, done last. « +N » counts
+  // the habits left out and the later ones, as the ghost tile of the stable zone; a tap on it opens Habits.
+  const order = [...show.filter(x => !done(x)), ...show.filter(done)];
+  const fit = cap => order.length + (later.length ? 1 : 0) <= cap ? order.length : cap - 1;
+  const fd = fit(HD_DESK), fp = fit(HD_PHONE);
+  const ghost = (f, cls) => { const n = order.length - f + later.length; return n ? `<span class="hdot ghost ${cls}" title="${n} more">+${n}</span>` : ''; };
+  const dot = (x, i) => { const d = done(x), t = x.task; return `<button class="hdot${d ? ' done' : ''}${!d && past(x) ? ' carry' : ''}${i >= fd ? ' x-d' : ''}${i >= fp ? ' x-p' : ''}" data-act="hcheck" data-id="${t.id}" style="--lc:${listColor(x.list)}" title="${esc(t.title)}${d ? ' · done today' : ''}">${d ? '' : esc(habitEmoji(t.title))}</button>`; };
+  const dots = order.map(dot).join('') + ghost(fd, 'g-d') + ghost(fp, 'g-p');
+  return `<div class="cs-split"><div class="hmini" data-act="hopen"><span class="hm-t">Habits</span><span class="when">· ${left ? left + ' left' : '✓'}${when}</span><span class="chev">›</span><span class="hdots">${dots}</span></div><div class="cs-div"></div>${canStartHTML(rows, td)}</div>`;
 }
 function agendaHTML(tasks, habitsDay, td) {
   const r = st.range, [a, b] = rangeSpan(r, td);
@@ -1748,6 +1757,7 @@ setInterval(() => {
   tmp.innerHTML = csRowHTML(x, csLast.td); const n = tmp.firstElementChild; n.classList.add('cs-in'); box.appendChild(n);
   if (old) { old.classList.add('cs-out'); setTimeout(() => old.remove(), matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 600); }
   box.closest('.cs-card').querySelectorAll('.cs-dots i').forEach((d, k) => d.classList.toggle('on', k === i));
+  const pos = box.closest('.cs-card').querySelector('.cs-pos'); if (pos) pos.textContent = `${i + 1}/${rows.length}`;
 }, 250);
 let lastHm = C.nowTimeIn();
 setInterval(() => {

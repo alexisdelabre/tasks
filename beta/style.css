@@ -714,15 +714,20 @@ dialog.palette::backdrop { background: rgba(10, 10, 15, .28); }
 .cs-split { margin-top: 12px; display: grid; grid-template-columns: 30% 1px minmax(0, 1fr); gap: 14px; align-items: start; }
 .cs-split.solo { grid-template-columns: minmax(0, 1fr); }
 .cs-div { background: var(--line); align-self: stretch; }
-.hmini { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: baseline; gap: 4px 6px; font-size: 13px; font-weight: 620; color: var(--ink2); cursor: pointer; min-width: 0; padding: 0 2px; }
+/* The two titles take 18 px and the two bodies 44 px, 6 px under them: the habit dots end on the bottom line of the task card. */
+.hmini { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; grid-template-rows: 18px 44px; align-items: center; gap: 6px; font-size: 13px; font-weight: 620; color: var(--ink2); cursor: pointer; min-width: 0; padding: 0 2px; }
 .hmini .when { font: 12px var(--mono); color: var(--ink3); font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .hmini .chev { color: var(--ink3); font-weight: 400; }
-.hmini .hdots { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; padding-top: 4px; }
-.hdot { width: 30px; height: 30px; border-radius: 50%; border: 1.5px solid var(--bd); background: var(--surf); display: grid; place-items: center; font-size: 14px; padding: 0; }
+.hmini .hdots { grid-column: 1 / -1; display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.hmini .hdots::-webkit-scrollbar { display: none; }
+.hdot { flex: none; width: 44px; height: 44px; border-radius: 50%; border: 1.5px solid var(--bd); background: var(--surf); display: grid; place-items: center; font-size: 20px; padding: 0; }
+@media (min-width: 761px) { .hdot.x-d, .hdot.g-p { display: none; } }
+@media (max-width: 760px) { .hdot.x-p, .hdot.g-d { display: none; } }
+.hdot.ghost { border: 1.5px dashed var(--bd); background: none; font: 600 13px var(--mono); color: var(--ink3); cursor: pointer; }
 .hdot.carry { border-style: dashed; border-color: var(--ink3); }
-.hdot.done { background: var(--lc) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M3.5 7.2l2.2 2.2 4.6-4.8' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/16px no-repeat; border-color: var(--lc); }
+.hdot.done { background: var(--lc) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M3.5 7.2l2.2 2.2 4.6-4.8' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/20px no-repeat; border-color: var(--lc); }
 .cs { display: grid; gap: 6px; min-width: 0; }
-.cs-head { font-size: 13px; font-weight: 620; color: var(--ink); padding: 0 2px; }
+.cs-head { font-size: 13px; line-height: 18px; height: 18px; font-weight: 620; color: var(--ink); padding: 0 2px; white-space: nowrap; }
 .cs-head .when { font: 12px var(--mono); color: var(--ink3); font-weight: 400; }
 .cs-card { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 6px 0 12px; background: var(--surf); border: 1px solid var(--bd); border-radius: 12px; min-width: 0; }
 .cs-tick { position: relative; display: block; flex: 1; min-width: 0; height: 100%; overflow: hidden; perspective: 500px; }
@@ -736,6 +741,7 @@ dialog.palette::backdrop { background: rgba(10, 10, 15, .28); }
 .cs-dots { display: flex; gap: 3px; padding-left: 4px; }
 .cs-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--bd); }
 .cs-dots i.on { background: var(--accent); }
+.cs-pos { font: 11px var(--mono); color: var(--ink3); font-variant-numeric: tabular-nums; min-width: 3.2em; text-align: right; }
 .cs-all { flex: none; min-width: 56px; text-align: center; font: 600 11.5px var(--mono); color: var(--accent); background: var(--accent-soft); border-radius: 8px; padding: 5px 8px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .cs-in { animation: csIn .55s cubic-bezier(.3, .7, .2, 1) both; transform-origin: 50% 50% -22px; }
 .cs-out { animation: csOut .55s cubic-bezier(.3, .7, .2, 1) both; transform-origin: 50% 50% -22px; }
@@ -752,6 +758,9 @@ dialog.palette::backdrop { background: rgba(10, 10, 15, .28); }
   .hmini .hdots { flex-basis: auto; flex-wrap: nowrap; padding-top: 0; gap: 4px; margin-left: auto; order: 3; }
   .hmini .chev { margin-left: 4px; order: 4; }
   .hmini .hdot { width: 22px; height: 22px; font-size: 11px; }
+  .hmini .hdot.ghost { font-size: 9.5px; }
+  .hmini .hdot.done { background-size: 14px; }
   .cs-head { display: none; }
   .cs-t { font-size: 14.5px; }
+  .cs-tick:not(.still) .cs-jd { display: none; }
 }
