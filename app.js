@@ -43,6 +43,7 @@ const today = () => C.todayIn();
 
 // The visible doc = last known file + queued ops.
 function currentDoc() {
+  window.__docBuilds = (window.__docBuilds || 0) + 1; // the e2e speed guard counts the builds of one render
   const doc = C.parse(st.text);
   for (const op of st.pending) { try { C.apply(doc, op, op.today); } catch {} }
   return doc;
@@ -595,7 +596,13 @@ function listsNav(lists, typeOf, countOf, withInbox = true) {
 // moves to today; one past act by (margin or missed) counts as overdue, so it shows red at the top.
 const isWin = x => !!x.task.by && !x.task.checked && !(window.__stickies || []).includes(x.list);
 const winPhase = x => isWin(x) || (!x.task.checked && C.fixedStart(x.task, listTypeByName(x.list))) ? C.phase(x.task) : null; // L24: a fixed start too
-const listTypeByName = l => C.listTypeOf(currentDoc().sections.find(s => s.name === l));
+// The list types change only with the file or the queued ops: read them once for each version, not once for each task.
+let listTypes = { text: null, pending: null, n: -1, map: null };
+const listTypeByName = l => {
+  if (listTypes.text !== st.text || listTypes.pending !== st.pending || listTypes.n !== st.pending.length)
+    listTypes = { text: st.text, pending: st.pending, n: st.pending.length, map: new Map(currentDoc().sections.map(s => [s.name, C.listTypeOf(s)])) };
+  return listTypes.map.has(l) ? listTypes.map.get(l) : C.listTypeOf(undefined);
+};
 // Story L19: before its window opens, a task cannot be done yet. Matrix and Lanes (do-now views) leave it out;
 // Agenda, List and Board (plan views) keep it.
 const notYet = x => winPhase(x) === 'before';

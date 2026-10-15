@@ -1,7 +1,7 @@
 // Network first, cache as a fallback, so the app opens offline with the last known tasks.
 // « no-cache » makes the browser ask GitHub Pages each time (a cheap 304 when nothing changed): without it,
 // the HTTP cache (max-age 600) can serve the old style.css or app.js for 10 minutes after a deploy.
-const CACHE = 'tasks-1792067507';
+const CACHE = 'tasks-1792068468';
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
 self.addEventListener('fetch', e => {
