@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
+<title>Tasks</title>
+<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111113" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Tasks beta">
+<meta name="tasks-channel" content="beta">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon-180.png">
+<script>try { const t = JSON.parse(localStorage.getItem('tasks.theme')); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch {}</script>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+  <aside class="nav" id="nav"></aside>
+  <main>
+    <header class="top">
+      <div class="titles">
+        <button class="back-lists" id="backLists" hidden>‹ Lists</button>
+        <button class="back-lists back-any" id="backSettings" hidden>‹ Back</button>
+        <h1 id="viewTitle">Agenda</h1>
+        <div class="sub" id="viewSub"></div>
+      </div>
+      <div class="view-tools" id="viewTools"></div>
+      <div class="top-actions">
+        <button class="icon-btn pv" id="optsBtn" title="View options" aria-label="View options" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>
+        <button class="icon-btn sync" id="syncBtn" title="Sync now" aria-label="Sync"><span class="dot"></span></button>
+        <button class="icon-btn" id="settingsBtn" title="Settings" aria-label="Settings">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3h0a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8v0a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+        </button>
+      </div>
+      <div class="day-strip" id="dayStrip" hidden></div>
+      <div class="view-opts" id="viewOpts" role="dialog" aria-label="View options" hidden></div>
+    </header>
+    <div class="demo-bar" id="demoBar" hidden>
+      <span class="grow"><b>Demo.</b> Example tasks; your changes stay in this browser.</span>
+      <button type="button" id="demoHelp">How it works</button>
+      <button type="button" id="demoConnect">Use my own list</button>
+      <button type="button" id="demoReset">Reset</button>
+    </div>
+    <section class="list" id="list"></section>
+    <!-- Settings page (story S9): one scroll, grouped cards; it replaced the settings sheet. -->
+    <section class="settings-page" id="settings" hidden>
+      <form id="settingsForm" autocomplete="off">
+        <div class="set-group">
+          <h2>Appearance</h2>
+          <div class="set-card"><div class="set-row"><span>Theme</span>
+            <div class="prio-pick" id="themePick">
+              <button type="button" data-theme="auto">Auto</button>
+              <button type="button" data-theme="light">Light</button>
+              <button type="button" data-theme="dark">Dark</button>
+            </div></div></div>
+        </div>
+        <div class="set-group">
+          <h2>GitHub connection</h2>
+          <div class="set-card">
+            <div class="fields">
+              <label><span>Token</span><input id="sToken" type="password" placeholder="github_pat_…" autocomplete="off"></label>
+              <label><span>Repository</span><input id="sRepo" placeholder="owner/repo"></label>
+              <label><span>Branch</span><input id="sBranch" placeholder="main"></label>
+              <label><span>File</span><input id="sPath" placeholder="Tasks.md"></label>
+            </div>
+            <button type="submit" class="set-row set-save">Save and sync</button>
+          </div>
+          <p class="muted small" id="sStatus"></p>
+          <p class="set-foot">A fine-grained token with <b>Contents: Read and write</b> on one repository. It stays in this browser. <button type="button" class="link" id="sHelp">Setup steps ›</button></p>
+        </div>
+        <div class="set-group">
+          <h2>Help</h2>
+          <div class="set-card"><button type="button" class="set-row" id="sHowTo"><span>How it works</span><span class="set-note">Views, quick add, file format, reminders ›</span></button></div>
+        </div>
+        <div class="set-group">
+          <h2>Maintenance</h2>
+          <div class="set-card"><button type="button" class="set-row" id="clearDoneBtn"><span>Clear done tasks older than 30 days</span></button></div>
+        </div>
+        <div class="set-group">
+          <h2>Beta features</h2>
+          <div class="set-card" id="flagList"></div>
+          <p class="set-foot">Switches for features in test. They stay in this browser.</p>
+        </div>
+        <div class="set-group">
+          <h2>About</h2>
+          <div class="set-card"><div class="set-row"><span>Version</span><span class="set-note mono"><span id="appVersion">beta · 2026-10-15 17:59 · 9e2e456</span></span></div></div>
+        </div>
+      </form>
+    </section>
+    <!-- How it works (story S6): a page since 2026-10-10; the dialog with a blurred backdrop lagged on the iPhone. -->
+    <section class="help-page" id="help" hidden>
+    <p>Tasks is a small task app built on one markdown file in a GitHub repository. It has no server and no account: the page talks to GitHub directly. Phone reminders come from a GitHub Action and <a href="https://ntfy.sh" target="_blank" rel="noopener">ntfy</a>, a free push service.</p>
+
+    <h3>The demo</h3>
+    <p>Without a token, the app shows example tasks. Each task shows one feature, and some explain it in their notes. Your changes stay in this browser. The demo starts again each day, or at once with Reset.</p>
+    <ul>
+      <li><b>Views.</b> Agenda and Matrix (urgent × important). Agenda shows Today, 3 days, Week, Month or All; tap a day of the strip to see that day, then a later day for a range. Each list also has List, Board, Lanes and Matrix views, with sections.</li>
+      <li><b>Quick add.</b> Type a sentence: <code>Call the bank tomorrow 9am every week #money !1 @Life</code>. The parser reads dates, times, repeats, tags, priority and the list, in English or French.</li>
+      <li><b>Repeats.</b> <code>day</code>, <code>weekday</code>, <code>week</code>, <code>month</code>, <code>year</code>, <code>3d</code>, <code>2w</code>, <code>mon,thu</code>, <code>1mon</code> (first Monday), <code>-1fri</code> (last Friday), <code>1wd</code> (first office day of the month, Monday to Friday). A deadline <code>by:</code> moves with the date. Completing a repeating task moves it to its next date.</li>
+      <li><b>Tasks.</b> Notes, checklists, priority, tags, and an In progress state.</li>
+      <li><b>Keyboard.</b> <kbd>n</kbd> adds a task, <kbd>1</kbd>–<kbd>4</kbd> change the view, the arrows move through the open panel.</li>
+    </ul>
+
+    <h3>The file format</h3>
+    <p>Each <code>## heading</code> is a list, and each <code>### heading</code> is a section. One task per line, every token optional except the title:</p>
+    <pre>- [ ] Title due:2026-10-20 at:18:00 every:week !1 #tag ^id
+  A note line, indented by two spaces
+  - [ ] A checklist item</pre>
+    <p>A done task reads <code>- [x] … done:2026-10-20</code>, a task in progress reads <code>- [/] …</code>. You can edit the file by hand, in Obsidian, or with an AI agent: the app keeps every line it does not change.</p>
+    <p>A heading can end with a type. <code>## Habits ~habits</code> is a habits list: each habit repeats, a missed one never goes overdue, <code>streak:5</code> counts the check-ins in a row and a note line <code>✓ 2026-10-19 2026-10-20</code> logs them (<code>streak:off</code> keeps only the reminder). <code>## Groceries ~stock</code> is a stock list: open = to buy, checked = in stock.</p>
+    <p>The sliders button at the top right opens View options: group a list by section, tag, priority or date, sort it, show empty sections and the tasks done this week, hide chips, show note lines, set the density. The address bar keeps the view, so a reload or a link opens the same list or task (<code>#list/work/board</code>, <code>#agenda/week</code>).</p>
+
+    <h3>Use your own list</h3>
+    <ol>
+      <li>Create a <b>private</b> repository on GitHub, for example <code>my-tasks</code>.</li>
+      <li>Add a file <code>Tasks.md</code> at its root. Start from the <a href="demo.md" target="_blank" rel="noopener">demo file</a>, or from one line: <code>## Inbox</code>.</li>
+      <li>Create a <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">fine-grained token</a>. Under Repository access, pick <b>Only select repositories</b> and choose that one repository. Under Permissions, set <b>Contents: Read and write</b>.</li>
+      <li>Open Settings here. Paste the token, then type <code>owner/my-tasks</code>, the branch <code>main</code> and the file <code>Tasks.md</code>.</li>
+    </ol>
+    <p>The token stays in this browser and goes only to GitHub. Each change is one commit in your repository, so you keep the full history. On a phone, use Share → Add to Home Screen to install the app.</p>
+
+    <h3>Phone reminders</h3>
+    <p>A task with a time sends a notification at that time. A task with a date and no time shows in a morning digest at 08:00. Set them up once:</p>
+    <ol>
+      <li>Install the ntfy app on your phone. Subscribe to a long random topic name, such as <code>tasks-7f3a91c2e8</code>. Anyone who knows the name can read it, so keep it secret.</li>
+      <li>Copy the folder <a href="https://github.com/alexisdelabre/tasks/tree/main/reminders" target="_blank" rel="noopener"><code>reminders/</code></a> of the code repository into your repository. Move <code>reminders/tasks-reminders.yml</code> to <code>.github/workflows/</code>.</li>
+      <li>In your repository, open Settings → Secrets and variables → Actions. Add the secret <code>NTFY_TOPIC</code> with your topic name.</li>
+    </ol>
+    <p>The Action runs after each change to <code>Tasks.md</code> and every 6 hours. It schedules each reminder in ntfy up to 3 days ahead. Change the time zone and the digest hour in the workflow file.</p>
+
+    <h3>Code</h3>
+    <p>The code is public at <a href="https://github.com/alexisdelabre/tasks" target="_blank" rel="noopener">github.com/alexisdelabre/tasks</a>: static files, no build. Fork it to host your own copy on GitHub Pages.</p>
+    </section>
+    <form class="add" id="addForm" autocomplete="off">
+      <div class="add-row">
+        <span class="plus">+</span>
+        <input id="addInput" placeholder="Add a task…" enterkeyhint="done">
+        <button type="submit" class="add-go" id="addGo" aria-label="Add">↵</button>
+      </div>
+      <div class="chips preview" id="addPreview"></div>
+    </form>
+    <nav class="tabbar" id="tabbar" aria-label="Views"></nav>
+    <button class="fab" id="fab" aria-label="Search" title="Search (/ or ⌘K)"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></button>
+  </main>
+</div>
+
+<!-- Command palette (story L25, round 1 choice B): one search over every list; on the phone the round button opens it. -->
+<dialog id="palette" class="palette" aria-label="Search">
+  <div class="pal-head"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input id="palInput" placeholder="Search tasks and lists" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go"><button type="button" class="pal-cancel" id="palCancel">Cancel</button></div>
+  <div class="pal-list" id="palList" role="listbox"></div>
+  <div class="pal-foot"><span><kbd>↑</kbd><kbd>↓</kbd> move</span><span><kbd>↵</kbd> open</span><span><kbd>esc</kbd> close</span><span class="grow"></span><span>Done tasks come last</span></div>
+</dialog>
+<dialog id="sheet" class="sheet">
+  <form method="dialog" id="sheetForm">
+    <div class="sheet-nav">
+      <button type="submit" value="save" class="back">‹ Back</button>
+      <span class="grow"></span>
+      <button type="submit" value="save" class="x" aria-label="Close" title="Close (Esc)">×</button>
+    </div>
+    <div class="sheet-head">
+      <button type="button" class="check big" id="sheetCheck" aria-label="Complete"></button>
+      <textarea id="fTitle" rows="1" class="title-input" placeholder="Task"></textarea>
+    </div>
+    <textarea id="fNotes" rows="4" placeholder="Notes"></textarea>
+    <div class="checklist" id="fChecklist"></div>
+    <div class="fields" id="dlBlock" hidden>
+      <label id="byRow"><span>Deadline</span><div class="by-in"><input type="date" id="fBy" aria-label="Deadline date"><input type="time" id="fByAt" aria-label="Deadline time"></div></label>
+      <label id="firmRow"><span>Type</span><div class="prio-pick" id="fFirm"><button type="button" data-f="1">Firm</button><button type="button" data-f="0">Best effort</button></div></label>
+      <label id="marginRow"><span>Margin</span><div class="prio-pick" id="fMargin"></div></label>
+      <label id="estRow"><span>Estimate</span><div class="prio-pick" id="fEst"></div></label>
+      <p class="lead-hint" id="winHint"></p>
+    </div>
+    <details class="more" id="moreFields">
+    <summary>Details: date, reminder, repeat, list, section</summary>
+    <div class="quick-dates">
+      <button type="button" data-date="0">Today</button>
+      <button type="button" data-date="1">Tomorrow</button>
+      <button type="button" data-date="nextweek">Next week</button>
+      <button type="button" data-date="">No date</button>
+    </div>
+    <div class="fields">
+      <label id="startRow"><span>Date</span><input type="date" id="fDue"></label>
+      <label><span>Reminder</span><input type="time" id="fAt"></label>
+      <label id="fixedRow"><span>Start</span><div class="prio-pick" id="fFixed"><button type="button" data-x="0">Anytime</button><button type="button" data-x="1">Not before</button><small class="row-hint" id="fFixedHint"></small></div></label>
+      <label><span>Repeat</span>
+        <select id="fEvery">
+          <option value="">Never</option><option value="day">Daily</option><option value="weekday">Weekdays</option>
+          <option value="week">Weekly</option><option value="2w">Every 2 weeks</option><option value="month">Monthly</option>
+          <option value="year">Yearly</option><option value="custom">Custom…</option>
+        </select>
+      </label>
+      <label class="custom-every" id="customEveryRow" hidden><span>Rule</span><input id="fEveryCustom" placeholder="3d · mon,thu · 1mon · -1fri · 1wd"></label>
+      <label><span>List</span><select id="fList"></select></label>
+      <label><span>Section</span><select id="fGroup"></select></label>
+      <label id="streakRow" hidden><span>Streak</span>
+        <div class="prio-pick" id="fStreak"><button type="button" data-on="1">Count</button><button type="button" data-on="0">Reminder only</button></div>
+      </label>
+      <label><span>Status</span>
+        <div class="prio-pick" id="fState"><button type="button" data-s="0">To do</button><button type="button" data-s="1">In progress</button></div>
+      </label>
+      <label><span>Priority</span>
+        <div class="prio-pick" id="fPrio">
+          <button type="button" data-p="1" class="p1">High</button><button type="button" data-p="2" class="p2">Med</button>
+          <button type="button" data-p="3" class="p3">Low</button><button type="button" data-p="0">None</button>
+        </div>
+      </label>
+      <label><span>Tags</span><input id="fTags" placeholder="admin, money"></label>
+    </div>
+    </details>
+    <div class="sheet-foot">
+      <button type="button" class="danger" id="deleteBtn">Delete</button>
+      <span class="grow"></span>
+      <button type="submit" class="primary save-btn" value="save">Done</button>
+      <button type="button" class="primary complete-btn" id="completeBtn">Mark as done ✓</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="newList" class="sheet new-list">
+  <form method="dialog">
+    <h2>New list</h2>
+    <input id="nlName" class="nl-name" placeholder="List name" autocomplete="off" enterkeyhint="done">
+    <div class="nl-types" id="nlTypes"></div>
+    <div class="sheet-foot"><span class="grow"></span><button type="submit" value="cancel">Cancel</button><button type="submit" class="primary" value="create">Create</button></div>
+  </form>
+</dialog>
+
+<div class="toast" id="toast" role="status" hidden><span class="tic" id="toastIcon"></span><div class="ttx"><div class="ta" id="toastText"></div><div class="tb" id="toastDetail"></div></div><button id="toastUndo">Undo</button><span class="tbar" id="toastBar"></span></div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
