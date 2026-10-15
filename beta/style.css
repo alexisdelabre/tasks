@@ -564,6 +564,8 @@ main:not(.wide) > .settings-page { width: 100%; max-width: 760px; margin-inline:
 /* Release channel (story M6): an amber line at the top and a pill beside the brand, on beta and named channels only. */
 html[data-channel] .app::before { content: ''; position: fixed; top: 0; left: 0; right: 0; height: 3px; background: #e8a33d; z-index: 1000; pointer-events: none; }
 .nav .brand .chan { margin-left: 6px; padding: 1px 6px; border-radius: 6px; background: #e8a33d; color: #fff; font-size: 11px; }
+/* The local dev server: the same line and pill in sky blue, so dev never reads as beta or stable. */
+html[data-channel="dev"] .app::before, html[data-channel="dev"] .nav .brand .chan { background: #38bdf8; }
 .flag-row .set-note { margin-left: 6px; }
 #clearDoneBtn { color: var(--red); }
 body.on-settings .add, body.on-settings .fab, body.on-settings .demo-bar { display: none !important; }
@@ -706,3 +708,50 @@ dialog.palette::backdrop { background: rgba(10, 10, 15, .28); }
 }
 @keyframes pal-up { from { opacity: 0; transform: translateY(16px) scale(.97); } }
 @media (prefers-reduced-motion: reduce) { dialog.palette { animation: none; } }
+
+/* Story L23 (flag L23, round 2 choice E): the habits and « Can start now » share one row. Computer: habits 30 % as dots,
+   a thin divider, one task at a time at the right. Phone: the habits on one short line, the task card under it. */
+.cs-split { margin-top: 12px; display: grid; grid-template-columns: 30% 1px minmax(0, 1fr); gap: 14px; align-items: start; }
+.cs-split.solo { grid-template-columns: minmax(0, 1fr); }
+.cs-div { background: var(--line); align-self: stretch; }
+.hmini { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: baseline; gap: 4px 6px; font-size: 13px; font-weight: 620; color: var(--ink2); cursor: pointer; min-width: 0; padding: 0 2px; }
+.hmini .when { font: 12px var(--mono); color: var(--ink3); font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.hmini .chev { color: var(--ink3); font-weight: 400; }
+.hmini .hdots { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; padding-top: 4px; }
+.hdot { width: 30px; height: 30px; border-radius: 50%; border: 1.5px solid var(--bd); background: var(--surf); display: grid; place-items: center; font-size: 14px; padding: 0; }
+.hdot.carry { border-style: dashed; border-color: var(--ink3); }
+.hdot.done { background: var(--lc) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 14 14'%3E%3Cpath d='M3.5 7.2l2.2 2.2 4.6-4.8' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/16px no-repeat; border-color: var(--lc); }
+.cs { display: grid; gap: 6px; min-width: 0; }
+.cs-head { font-size: 13px; font-weight: 620; color: var(--ink); padding: 0 2px; }
+.cs-head .when { font: 12px var(--mono); color: var(--ink3); font-weight: 400; }
+.cs-card { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 6px 0 12px; background: var(--surf); border: 1px solid var(--bd); border-radius: 12px; min-width: 0; }
+.cs-tick { position: relative; display: block; flex: 1; min-width: 0; height: 100%; overflow: hidden; perspective: 500px; }
+.cs-card > .cs-row { flex: 1; }
+.cs-row { position: absolute; inset: 0; display: flex; align-items: center; gap: 10px; min-width: 0; cursor: pointer; backface-visibility: hidden; }
+.cs-card > .cs-row { position: static; height: 100%; }
+.cs-c { flex: none; width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--lc); }
+.cs-t { flex: 1; min-width: 0; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cs-j { font: 11.5px var(--mono); color: var(--ink3); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cs-j.soon { color: var(--amber); }
+.cs-dots { display: flex; gap: 3px; padding-left: 4px; }
+.cs-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--bd); }
+.cs-dots i.on { background: var(--accent); }
+.cs-all { flex: none; min-width: 56px; text-align: center; font: 600 11.5px var(--mono); color: var(--accent); background: var(--accent-soft); border-radius: 8px; padding: 5px 8px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cs-in { animation: csIn .55s cubic-bezier(.3, .7, .2, 1) both; transform-origin: 50% 50% -22px; }
+.cs-out { animation: csOut .55s cubic-bezier(.3, .7, .2, 1) both; transform-origin: 50% 50% -22px; }
+@keyframes csIn { from { transform: rotateX(-90deg); } }
+@keyframes csOut { to { transform: rotateX(90deg); } }
+@media (prefers-reduced-motion: reduce) { .cs-in, .cs-out { animation: none; } }
+@media (hover: hover) { .cs-row:hover .cs-t { text-decoration: underline; text-underline-offset: 3px; } .hdot:hover { border-color: var(--ink3); } }
+.strip button { position: relative; }
+.strip .csb { position: absolute; right: -3px; bottom: -4px; min-width: 16px; height: 16px; padding: 0 3px; border-radius: 8px; background: var(--amber); color: #fff; font: 700 9.5px/12px var(--mono); text-align: center; border: 2px solid var(--well); }
+@media (max-width: 760px) {
+  .cs-split { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .cs-div { display: none; }
+  .hmini { display: flex; align-items: center; padding: 6px 10px; border-radius: 12px; background: var(--surf); border: 1px solid var(--bd); }
+  .hmini .hdots { flex-basis: auto; flex-wrap: nowrap; padding-top: 0; gap: 4px; margin-left: auto; order: 3; }
+  .hmini .chev { margin-left: 4px; order: 4; }
+  .hmini .hdot { width: 22px; height: 22px; font-size: 11px; }
+  .cs-head { display: none; }
+  .cs-t { font-size: 14.5px; }
+}

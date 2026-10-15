@@ -16,12 +16,17 @@ const CHANNEL = document.querySelector('meta[name="tasks-channel"]')?.content ||
 const BETA = CHANNEL !== 'stable';
 const CH = BETA ? CHANNEL + '.' : '';
 const K = k => (DEMO ? 'demo.' : '') + CH + k;
-if (BETA) document.documentElement.dataset.channel = CHANNEL;
+// The mark of the version: the channel on beta, « dev » on the local dev server (a sky-blue line and pill), none on stable.
+// Tests and frames set tasks.nodev (or tasks.e2e) to see the app as stable. The dev mark changes no storage key: CH stays ''.
+const LOCAL = ['localhost', '127.0.0.1'].includes(location.hostname);
+const MARK = BETA ? CHANNEL : LOCAL && !LS.get('nodev', false) && !LS.get('e2e', false) ? 'dev' : '';
+if (MARK) document.documentElement.dataset.channel = MARK;
 // Feature flags (story M6): one switch per flag in Settings › Beta features, kept per device, off by default.
 // A flag is temporary: when the feature is kept or dropped, delete the flag. <html data-flags> lists the flags that are on, for CSS.
 const FLAGS = [
   // { id: 'L12', name: 'Calendar view', since: '2026-10-20' },
   { id: 'L30', name: 'Notes mark at the top right, with a peek', since: '2026-10-15' },
+  { id: 'L23', name: 'Can start now, one task at a time', since: '2026-10-15' },
 ];
 // The test flag X0 exists only for e2e-channels.mjs: on localhost, with tasks.e2e set, so the frames never show it.
 if (location.hostname === 'localhost' && LS.get('e2e', false)) FLAGS.push({ id: 'X0', name: 'Test flag (local only)', since: '2026-10-15' });
@@ -38,6 +43,7 @@ const st = {
   view: (v => ['today', 'next', 'all'].includes(v) ? 'agenda' : v)(LS.get('view', 'agenda')),
   range: { id: '3d' }, // Agenda range; back to 3 days when you leave the view
   anchor: null, // first day tapped in the day strip, waiting for the last day of a range
+  csAll: false, // L23: the « Can start now » list open in full
   status: 'ok',
   syncing: false,
 };
@@ -714,16 +720,21 @@ function habitWindow(x) {
 }
 const plainTitle = t => t.replace(/^\p{Extended_Pictographic}\uFE0F?\s*/u, '') || t;
 const habitEmoji = t => (t.match(/^\p{Extended_Pictographic}️?/u) || [t.trim()[0] || '·'])[0];
-function habitZone(rows) {
-  if (!rows.length) return '';
+function habitParts(rows) {
   const td = today(), now = hourOf(C.nowTimeIn());
   const done = x => C.habitLog(x.task).includes(td);
   const soon = x => { const [a, b] = habitWindow(x); return a <= now + 4 && b > now; };
   const past = x => habitWindow(x)[1] <= now;
   const show = rows.filter(x => soon(x) || (past(x) && !done(x)));
   const later = rows.filter(x => !done(x) && !show.includes(x));
-  if (!show.length) return `<button class="hzone thin" data-act="hopen">Habits <span class="rest">${later.length ? later.length + ' later' : '✓'}</span><span class="chev">›</span></button>`;
   const m = MOMENTS.find(([, a, b]) => now >= a && now < b) || MOMENTS.find(([, a]) => a > now);
+  return { done, past, show, later, m };
+}
+const habitThin = later => `<button class="hzone thin" data-act="hopen">Habits <span class="rest">${later.length ? later.length + ' later' : '✓'}</span><span class="chev">›</span></button>`;
+function habitZone(rows) {
+  if (!rows.length) return '';
+  const { done, past, show, later, m } = habitParts(rows);
+  if (!show.length) return habitThin(later);
   const head = m ? `${m[3]} <span class="when">until ${String(m[2]).padStart(2, '0')}:00</span>` : 'Habits';
   const tile = x => {
     const d = done(x), t = x.task, under = t.tags[0] ? `<span class="hlb tag">#${esc(t.tags[0])}</span>` : `<span class="hlb">${esc(t.at || t.title.replace(/^\p{Extended_Pictographic}️?\s*/u, ''))}</span>`;
@@ -732,11 +743,51 @@ function habitZone(rows) {
   const ghost = later.length ? `<span class="htile ghost"><span class="hsq">+${later.length}</span><span class="hlb">later</span></span>` : '';
   return `<div class="hzone" data-act="hopen"><div class="hhead">${head}<span class="chev">›</span></div><div class="htiles">${show.map(tile).join('')}${ghost}</div></div>`;
 }
+// Story L23 (flag L23, round 2 choice E, 2026-10-15): « Can start now ». A task of a task list whose window is open (a deadline,
+// and no start or a start passed) lives on its act-by day; when that day is after the range, the range never shows it. With the
+// flag, the habit zone of a range that starts today shares its row with these tasks: the habits as dots at the left (30 %), and
+// one task at a time at the right, which turns to the next one with a flip. The closer the act-by day, the longer a task stays on
+// screen (csSecs). The rotation follows the clock, not the render: the task on screen is a function of Date.now() (csIndex), so a
+// return to Agenda, a sync or a reload never starts it over. « All N » opens the full list in place and becomes « Less ».
+// On the day strip, an amber number at the bottom right of a day counts these tasks to do by that day (today left out).
+const canStart = x => isWin(x) && listTypeByName(x.list) === 'tasks' && winPhase(x) === 'window';
+const daysTo = (d, td) => Math.round((C.fromYmd(d) - C.fromYmd(td)) / 864e5);
+const csSecs = j => Math.max(3, Math.min(12, 84 / (j + 7))); // J-0 12 s, J-3 8.4 s, J-7 6 s, J-16 3.7 s, J-21 and later 3 s
+const csSort = rows => rows.sort((x, y) => dueOf(x).localeCompare(dueOf(y)) || (x.task.prio || 4) - (y.task.prio || 4) || x.task.id.localeCompare(y.task.id));
+function csIndex(rows, td, now = Date.now()) {
+  const ms = rows.map(x => csSecs(daysTo(dueOf(x), td)) * 1000), cycle = ms.reduce((s, v) => s + v, 0);
+  let t = now % cycle, i = 0;
+  while (t >= ms[i]) t -= ms[i++];
+  return i;
+}
+let csLast = { rows: [], td: null }; // the rows of the last render, for the rotation timer
+const csJ = (x, td) => { const j = daysTo(dueOf(x), td); return `J-${j} · ${esc(shortDate(dueOf(x)))}`; };
+const csRowHTML = (x, td, extra = '') => `<span class="cs-row" data-act="csopen" data-id="${x.task.id}" style="--lc:${listColor(x.list)}"><span class="cs-c"></span><span class="cs-t">${esc(x.task.title)}</span><span class="cs-j${daysTo(dueOf(x), td) <= 7 ? ' soon' : ''}">${csJ(x, td)}</span>${extra}</span>`;
+function canStartHTML(rows, td) {
+  const all = st.csAll && rows.length > 1, i = csIndex(rows, td);
+  const btn = rows.length > 1 ? `<button class="cs-all" data-act="csall" aria-expanded="${all}">${all ? 'Less' : 'All ' + rows.length}</button>` : '';
+  const dots = rows.length > 1 && rows.length <= 6 && !all ? `<span class="cs-dots">${rows.map((_, k) => `<i class="${k === i ? 'on' : ''}"></i>`).join('')}</span>` : '';
+  const first = all ? rows[0] : rows[i];
+  const rest = all ? rows.slice(1).map(x => `<div class="cs-card">${csRowHTML(x, td)}</div>`).join('') : '';
+  return `<div class="cs" aria-label="Can start now, ${rows.length}"><div class="cs-head">Can start now <span class="when">· ${rows.length}</span></div>`
+    + `<div class="cs-card"><span class="cs-tick${all ? ' still' : ''}" data-cs="${first.task.id}">${csRowHTML(first, td)}</span>${dots}${btn}</div>${rest}</div>`;
+}
+function canStartZone(habitsDay, rows, td) {
+  if (!habitsDay.length) return `<div class="cs-split solo">${canStartHTML(rows, td)}</div>`;
+  const { done, past, show, later, m } = habitParts(habitsDay);
+  if (!show.length) return habitThin(later) + `<div class="cs-split solo">${canStartHTML(rows, td)}</div>`;
+  const left = show.filter(x => !done(x)).length;
+  const when = m ? ` · until ${String(m[2]).padStart(2, '0')}:00` : '';
+  const dot = x => { const d = done(x), t = x.task; return `<button class="hdot${d ? ' done' : ''}${!d && past(x) ? ' carry' : ''}" data-act="hcheck" data-id="${t.id}" style="--lc:${listColor(x.list)}" title="${esc(t.title)}${d ? ' · done today' : ''}">${d ? '' : esc(habitEmoji(t.title))}</button>`; };
+  return `<div class="cs-split"><div class="hmini" data-act="hopen"><span class="hm-t">Habits</span><span class="when">· ${left ? left + ' left' : '✓'}${when}</span><span class="chev">›</span><span class="hdots">${show.map(dot).join('')}</span></div><div class="cs-div"></div>${canStartHTML(rows, td)}</div>`;
+}
 function agendaHTML(tasks, habitsDay, td) {
   const r = st.range, [a, b] = rangeSpan(r, td);
   const overdue = tasks.filter(x => dueOf(x) && dueOf(x) < td);
   let html = horizonHTML(tasks.filter(x => (window.__stickies || []).includes(x.list)), td);
-  html += a === td ? habitZone(habitsDay) : ''; // a short zone: the agenda keeps its room for the tasks
+  const cs = flagOn('L23') && a === td && b ? csSort(tasks.filter(x => canStart(x) && dueOf(x) > b)) : [];
+  csLast = { rows: cs, td };
+  html += a === td ? (cs.length ? canStartZone(habitsDay, cs, td) : habitZone(habitsDay)) : ''; // a short zone: the agenda keeps its room for the tasks
   html += group('Overdue', overdue, { late: true });
   let title, sub;
   if (r.id === 'all') {
@@ -763,9 +814,10 @@ function stripHTML(tasks, td) {
   let h = '';
   for (let i = 0; i < STRIP_DAYS; i++) {
     const d = C.addDays(td, i), n = tasks.filter(x => dueOf(x) === d).length;
+    const cs = flagOn('L23') && i ? tasks.filter(x => dueOf(x) === d && canStart(x)).length : 0; // L23: to start now, act by that day
     const cls = d === a || d === b ? 'end' : d > a && d < b ? 'in' : '';
     const wd = C.fromYmd(d).toLocaleDateString('en-GB', { weekday: 'short', timeZone: 'UTC' }).slice(0, 2);
-    h += `<button data-day="${d}" class="${cls}${C.weekday(d) === 1 && i ? ' wk' : ''}" aria-label="${esc(dayLabel(d, true))}${n ? `, ${n} task${n > 1 ? 's' : ''}` : ''}"><span class="w">${wd}</span><span class="dn">${+d.slice(8)}</span><span class="dots">${'<i></i>'.repeat(Math.min(n, 3))}</span></button>`;
+    h += `<button data-day="${d}" class="${cls}${C.weekday(d) === 1 && i ? ' wk' : ''}" aria-label="${esc(dayLabel(d, true))}${n ? `, ${n} task${n > 1 ? 's' : ''}` : ''}${cs ? `, ${cs} to start now` : ''}"><span class="w">${wd}</span><span class="dn">${+d.slice(8)}</span><span class="dots">${'<i></i>'.repeat(Math.min(n, 3))}</span>${cs ? `<span class="csb">${cs}</span>` : ''}</button>`;
   }
   const tip = st.anchor ? `From ${shortDate(st.anchor)}: tap the last day.` : 'Tap a day, then another day for a range.';
   return `<div class="strip">${h}</div><div class="strip-tip">${esc(tip)}</div>`;
@@ -806,7 +858,7 @@ function render() {
   };
   const typeOf = l => C.listTypeOf(doc.sections.find(s => s.name === l));
   const countOf = l => (typeOf(l) === 'habits' ? habitsNow : open).filter(x => x.list === l).length;
-  let nav = `<div class="brand">Tasks${BETA ? ` <span class="chan">${esc(CHANNEL)}</span>` : ''}</div>`;
+  let nav = `<div class="brand">Tasks${MARK ? ` <span class="chan">${esc(MARK)}</span>` : ''}</div>`;
   nav += `<button class="add-task" data-act="add" title="Add a task (n)"><span class="ico">+</span>New task<kbd>n</kbd></button>`;
   nav += `<button class="add-task search-btn" data-act="search" title="Search tasks and lists (/ or ⌘K)"><span class="ico"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></span>Search<kbd>⌘K</kbd></button>`;
   nav += VIEWS.map(v => `<button data-view="${v.id}" class="${st.view === v.id ? 'on' : ''}"><span class="ico">${v.id === 'stickies' ? '<span class="stk-ico"></span>' : v.ico || agendaIcon(17)}</span>${v.label}<span class="count ${v.id === 'agenda' && late ? 'late' : ''}">${counts[v.id] || ''}</span></button>`).join('');
@@ -914,7 +966,7 @@ function render() {
   $('#backSettings').hidden = !PAGES.includes(v);
   document.body.classList.toggle('on-settings', PAGES.includes(v));
   $('#settingsBtn').classList.toggle('on', v === 'settings');
-  document.title = `Tasks${BETA ? ' · ' + CHANNEL : ''}${counts.agenda ? ` (${counts.agenda})` : ''}`;
+  document.title = `Tasks${MARK ? ' · ' + MARK : ''}${counts.agenda ? ` (${counts.agenda})` : ''}`;
   updatePreview();
   if (!v.startsWith('list:')) st.optList = null;
   paintViewOpts();
@@ -1044,6 +1096,8 @@ $('#list').addEventListener('click', e => {
   }
   if (act === 'addgroup') return addGroupPrompt();
   if (act === 'hcheck') return toggle(e.target.closest('[data-id]').dataset.id, null); // habit zone: check in place
+  if (act === 'csall') { st.csAll = !st.csAll; return render(); } // L23: the full list in place, and back
+  if (act === 'csopen') return openTask(e.target.closest('[data-id]').dataset.id); // L23: a row opens its task
   if (act === 'hopen') return setView('habits'); // the rest of the habit zone opens the Habits view
   if (act === 'hpin') return openTask(e.target.closest('[data-id]').dataset.id); // a note of the horizon opens its sticky
   if (act === 'hgroup') return setView('stickies'); // a week group opens the Stickies view, sorted by date
@@ -1682,6 +1736,19 @@ let lastDay = today();
 setInterval(() => { if (today() !== lastDay) { lastDay = today(); DEMO ? loadDemo().then(render) : render(); } }, 30_000);
 // Story L27: an Anytime task sits at the current hour. When the hour of an open task of today passes, that task moves above
 // the Anytime ones: render again, unless the edit panel is open (the next change or sync sorts it).
+// Story L23: the rotation. The task on screen follows the clock (csIndex); this timer only plays the flip when the slot changes.
+// It waits while the pointer is on the card or the full list is open, then shows the task of the current slot.
+setInterval(() => {
+  const box = document.querySelector('.cs-tick:not(.still)'), rows = csLast.rows;
+  if (!box || rows.length < 2 || document.visibilityState !== 'visible' || box.closest('.cs-card').matches(':hover')) return;
+  const i = csIndex(rows, csLast.td), x = rows[i];
+  if (!x || box.dataset.cs === x.task.id) return;
+  box.dataset.cs = x.task.id;
+  const old = box.querySelector('.cs-row:last-child'), tmp = document.createElement('span');
+  tmp.innerHTML = csRowHTML(x, csLast.td); const n = tmp.firstElementChild; n.classList.add('cs-in'); box.appendChild(n);
+  if (old) { old.classList.add('cs-out'); setTimeout(() => old.remove(), matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 600); }
+  box.closest('.cs-card').querySelectorAll('.cs-dots i').forEach((d, k) => d.classList.toggle('on', k === i));
+}, 250);
 let lastHm = C.nowTimeIn();
 setInterval(() => {
   const hm = C.nowTimeIn(), td = today(), was = lastHm; lastHm = hm;
