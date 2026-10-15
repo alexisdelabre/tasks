@@ -127,6 +127,7 @@ Demo file. Each `## heading` is a list, each `### heading` is a section. One tas
 ## Training color:#a855f7/purple
 ### Week 1 · Build
 - [ ] Easy run 8 km due:2026-10-12 every:weekday ^demo40
+  — 8 km · J-17 · Week 1 (8/50 km)
 - [ ] Intervals 6 × 800 m due:2026-10-14 at:07:00 !1 ^demo41
   Warm up 15 min, then 6 × 800 m at 5 km pace, 2 min jog between.
 ### Week 2 · Peak

@@ -295,9 +295,11 @@ function checklistCount(t) {
   return n ? `${done}/${n}` : '';
 }
 
-// The first prose lines of the notes, when the preview is on (story V23); View options sets 1 to 3 lines.
+// The first lines of the notes, when the preview is on (story V23); View options sets 1 to 3 lines.
+// The « — 8 km · J-16 · … » footer of a training run counts too: it comes last, so the clamp hides it under a longer note,
+// and it is the only note of an easy run. Skipping it left those tiles with a mark and an empty preview (2026-10-15).
 function notesPreview(t) {
-  const lines = t.notes.map(n => n.trim()).filter(n => n && !/^- \[[ xX]\]/.test(n) && !n.startsWith('—') && !C.HABIT_LOG_RE.test(n));
+  const lines = t.notes.map(n => n.trim()).filter(n => n && !/^- \[[ xX]\]/.test(n) && !C.HABIT_LOG_RE.test(n));
   return lines.slice(0, prefs.preview).join(' ');
 }
 // hideTag: the tag of the group the row sits in (story V32). ghost: a second copy of a task with several tags, faded.
