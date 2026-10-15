@@ -21,6 +21,7 @@ if (BETA) document.documentElement.dataset.channel = CHANNEL;
 // A flag is temporary: when the feature is kept or dropped, delete the flag. <html data-flags> lists the flags that are on, for CSS.
 const FLAGS = [
   // { id: 'L12', name: 'Calendar view', since: '2026-10-20' },
+  { id: 'L30', name: 'Notes mark at the top right, with a peek', since: '2026-10-15' },
 ];
 // The test flag X0 exists only for e2e-channels.mjs: on localhost, with tasks.e2e set, so the frames never show it.
 if (location.hostname === 'localhost' && LS.get('e2e', false)) FLAGS.push({ id: 'X0', name: 'Test flag (local only)', since: '2026-10-15' });
@@ -226,6 +227,7 @@ function listColor(name) {
 }
 // SF Symbols-like line icons for the phone tab bar.
 const ICON = {
+  notes: '<path d="M5 7h14M5 12h14M5 17h9"/>', // three lines, the last one shorter (story L30)
   // The Agenda icon is a calendar page with today's day number (agendaIcon).
   habits: '<circle cx="12" cy="12" r="8.5"/><path d="m8.2 12.2 2.7 2.7 5-5.4"/>', // the habit ring, checked
   matrix: '<rect x="3.5" y="3.5" width="17" height="17" rx="3.5"/><path d="M12 3.5v17M3.5 12h17"/>', // one square cut in four, unlike the Lists tiles
@@ -262,6 +264,15 @@ const MODES = [
   { id: 'lanes', label: 'Lanes', svg: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9.5h18M3 15h18M9 4v16"/>' },
   { id: 'matrix', label: 'Matrix', svg: '<rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/>' },
 ];
+// Story L30 (flag): a task with notes gets the lines glyph at the top right of its tile, in place of the ✎ chip.
+// A hover (or keyboard focus) on it shows the notes in a dark bubble, up to 8 lines; a click goes on to the tile and opens the panel.
+const hasNotes = t => t.notes.some(n => n.trim() && !C.HABIT_LOG_RE.test(n));
+function notesMark(t) {
+  const lines = t.notes.map(n => n.trim()).filter(n => n && !C.HABIT_LOG_RE.test(n));
+  if (!lines.some(n => !/^- \[[ xX/]\]/.test(n))) return ''; // a checklist only: its ☑ chip already says it
+  const show = lines.slice(0, 8).map(n => { const m = n.match(/^- \[([ xX/])\]\s*(.*)$/); return `<span>${m ? (m[1] === ' ' ? '☐ ' : '☑ ') + esc(m[2]) : esc(n)}</span>`; }).join('');
+  return `<span class="nmark" tabindex="0" aria-label="Notes">${icon(ICON.notes, 15)}<span class="nbub" role="tooltip"><b>Notes</b>${show}${lines.length > 8 ? '<i>Open the task for the rest</i>' : ''}</span></span>`;
+}
 const icon = (body, n = 18) => `<svg viewBox="0 0 24 24" width="${n}" height="${n}" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${body}</svg>`;
 const listMode = l => prefs.listView[l] || 'list';
 
@@ -313,7 +324,7 @@ function taskHTML({ task: t, list }, { showList = true, showDate = true, drag = 
   }
   const cl = checklistCount(t);
   if (cl) chips.push(`<span class="chip mono">☑ ${cl}</span>`);
-  else if (t.notes.some(n => n.trim() && !C.HABIT_LOG_RE.test(n))) chips.push(`<span class="chip">✎</span>`);
+  else if (!flagOn('L30') && hasNotes(t)) chips.push(`<span class="chip">✎</span>`);
   if (showList) chips.push(`<span class="chip lchip"><span class="swatch" style="background:${listColor(list)}"></span>${esc(list)}</span>`);
   if (ch.tags) for (const tag of t.tags) if (tag !== hideTag) chips.push(`<span class="chip tag">#${esc(tag)}</span>`);
   if (t.checked && t.done) chips.push(`<span class="chip">✓ ${esc(dayLabel(t.done))}</span>`);
@@ -327,7 +338,7 @@ function taskHTML({ task: t, list }, { showList = true, showDate = true, drag = 
   const cart = opts_cart(t, list);
   return `<div class="task${t.checked ? ' done' : ''}${cart ? ' cart' : ''}${ghost ? ' ghost' : ''}${ph ? ' win-' + ph : ''}${sel}" data-id="${t.id}" style="--lc:${listColor(list)}"${drag ? ' draggable="true"' : ''}>
     <button class="check${stk ? ' stk' : ''}${t.checked || cart ? ' on' : ''}${t.doing && !cart ? ' doing' : ''}${t.prio ? ' p' + t.prio : ''}" data-act="check" aria-label="Complete"></button>
-    <div class="body"><div class="ttl"><span class="tt">${esc(t.title) || '<span style="color:var(--ink3)">Untitled</span>'}</span></div>${bar}<div class="meta">${chips.join('')}</div>${prev ? `<div class="npreview" style="-webkit-line-clamp:${prefs.preview}">${esc(prev)}</div>` : ''}</div>
+    <div class="body"><div class="ttl"><span class="tt">${esc(t.title) || '<span style="color:var(--ink3)">Untitled</span>'}</span></div>${bar}<div class="meta">${chips.join('')}</div>${prev ? `<div class="npreview" style="-webkit-line-clamp:${prefs.preview}">${esc(prev)}</div>` : ''}</div>${flagOn('L30') ? notesMark(t) : ''}
   </div>`;
 }
 // The window bar (story L15, round 1 variant B): the window in the accent from the start to act by, the margin hatched
@@ -359,7 +370,7 @@ function habitHTML({ task: t, list }) {
   if (t.at) chips.push(`<span class="chip mono">⏰ ${t.at}</span>`);
   if (t.every) chips.push(`<span class="chip">↻ ${esc(C.describeEvery(t.every))}</span>`);
   if (due && due > td && !doneToday) chips.push(`<span class="chip">${esc(dayLabel(due))}</span>`);
-  if (t.notes.some(n => n.trim() && !C.HABIT_LOG_RE.test(n))) chips.push(`<span class="chip">✎</span>`);
+  if (!flagOn('L30') && hasNotes(t)) chips.push(`<span class="chip">✎</span>`);
   for (const tag of t.tags) chips.push(`<span class="chip tag">#${esc(tag)}</span>`);
   const track = t.streak !== 'off';
   const streak = t.due && t.due < td ? 0 : t.streak || 0;
@@ -367,7 +378,7 @@ function habitHTML({ task: t, list }) {
   const sel = editing && editing.id === t.id ? ' sel' : '';
   return `<div class="task habit${doneToday ? ' done' : ''}${sel}" data-id="${t.id}" data-today="${doneToday ? 1 : 0}" style="--lc:${listColor(list)}">
     <button class="check${doneToday ? ' on' : ''}" data-act="check" aria-label="Done today"></button>
-    <div class="body"><div class="ttl">${esc(t.title)}</div><div class="meta">${chips.join('')}</div></div>${days}
+    <div class="body"><div class="ttl">${esc(t.title)}</div><div class="meta">${chips.join('')}</div></div>${flagOn('L30') ? notesMark(t) : ''}${days}
   </div>`;
 }
 function habitGroup(title, rows) {
@@ -1414,6 +1425,14 @@ $('#flagList').addEventListener('click', e => {
   LS.set('flags', flagState); applyFlags(); renderFlags(); render();
 });
 renderFlags(); // Settings can open on a reload without openSettings()
+// Story L30: the notes bubble opens under its mark; near the bottom of the screen it opens above it.
+const placeBubble = e => {
+  const m = e.target.closest?.('.nmark'); if (!m) return;
+  m.classList.remove('up');
+  requestAnimationFrame(() => { const b = m.querySelector('.nbub'); if (b && b.getBoundingClientRect().bottom > innerHeight - 8) m.classList.add('up'); });
+};
+document.addEventListener('pointerover', placeBubble);
+document.addEventListener('focusin', placeBubble);
 $('#settingsBtn').addEventListener('click', () => st.view === 'settings' ? closePage() : openSettings());
 $('#backSettings').addEventListener('click', closePage);
 $('#settingsForm').addEventListener('submit', e => {
