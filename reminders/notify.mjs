@@ -57,7 +57,7 @@ for (const { task: t, list } of open) {
 
 // Morning digest: open tasks of the next digest day or before (start day, else act-by day). Habits stay out of it.
 const digestDay = C.nowTimeIn(TZ, now) < DIGEST_AT ? today : C.addDays(today, 1);
-const due = open.filter(x => !habitLists.has(x.list) && C.dayOf(x.task, TZ) && C.dayOf(x.task, TZ) <= digestDay).sort(C.sortTasks);
+const due = open.filter(x => !habitLists.has(x.list) && C.dayOf(x.task, TZ) && C.dayOf(x.task, TZ) <= digestDay).sort(C.sortTasksAt());
 if (due.length) {
   const late = due.filter(x => C.dayOf(x.task, TZ) < digestDay).length;
   want.set('digest-' + digestDay, {

@@ -419,9 +419,9 @@ const PRIO_NAMES = { 1: 'High', 2: 'Medium', 3: 'Low', 0: 'No priority' };
 const SORTS = [['date', 'Date'], ['prio', 'Priority'], ['file', 'File']];
 function sortItems(l, items) {
   const by = prefs.sortBy[l] || 'date';
-  const key = i => i.x.task;
-  const cmp = by === 'prio' ? (a, b) => (key(a).prio || 9) - (key(b).prio || 9) || C.sortTasks(a.x, b.x)
-    : by === 'file' ? (a, b) => (a.x.ord ?? 0) - (b.x.ord ?? 0) : (a, b) => C.sortTasks(a.x, b.x);
+  const key = i => i.x.task, byDate = C.sortTasksAt();
+  const cmp = by === 'prio' ? (a, b) => (key(a).prio || 9) - (key(b).prio || 9) || byDate(a.x, b.x)
+    : by === 'file' ? (a, b) => (a.x.ord ?? 0) - (b.x.ord ?? 0) : (a, b) => byDate(a.x, b.x);
   return items.sort((a, b) => (key(a).checked ? 1 : 0) - (key(b).checked ? 1 : 0) || cmp(a, b));
 }
 function groupRows(l, rows, groups, mode = groupMode(l)) {
@@ -454,7 +454,7 @@ function groupRowsRaw(l, rows, groups, mode) {
   if (mode === 'date') {
     const td = today(), wk = C.addDays(td, 7);
     const D = [['late', 'Overdue', d => d && d < td], ['today', 'Today', d => d === td], ['week', 'Next 7 days', d => d && d > td && d <= wk], ['later', 'Later', d => d && d > wk], ['none', 'No date', d => !d]];
-    return D.map(([k, label, f]) => ({ key: 'd:' + k, label, value: null, items: rows.filter(x => f(x.task.due)).sort(C.sortTasks).map(x => ({ x })) })).filter(g => g.items.length);
+    return D.map(([k, label, f]) => ({ key: 'd:' + k, label, value: null, items: rows.filter(x => f(x.task.due)).sort(C.sortTasksAt()).map(x => ({ x })) })).filter(g => g.items.length);
   }
   return [one('all', '', null, rows)];
 }
@@ -504,10 +504,11 @@ function lanesHTML(l, rows, groups) {
   const since = C.addDays(today(), -30), mode = groupMode(l), drop = droppable(mode);
   const live = rows.filter(x => (!x.task.checked || (x.task.done || '') >= since) && !notYet(x)); // story L19: only what I can do now
   let html = `<div class="lanes" style="--cols:${STATES.length}"><div></div>${STATES.map(([, s]) => `<div class="lane-h">${s}</div>`).join('')}`;
+  const byDate = C.sortTasksAt();
   for (const g of groupRows(l, live, groups)) {
     html += `<div class="lane-name${mode === 'tag' && g.value ? ' gtag' : ''}">${esc(g.label || 'Tasks')}</div>`;
     for (const [k] of STATES) {
-      const r = g.items.filter(i => stateOf(i.x.task) === k).sort((a, b) => C.sortTasks(a.x, b.x));
+      const r = g.items.filter(i => stateOf(i.x.task) === k).sort((a, b) => byDate(a.x, b.x));
       // Without a group value (Date, None), a drop only changes the state.
       html += `<div class="cell" data-drop="1" data-gb="${drop ? mode : 'state'}" data-group="${esc(g.value ?? '')}" data-state="${k}">${r.map(i => taskHTML(i.x, { showList: false, drag: true, hideTag: i.hideTag, ghost: i.ghost })).join('')}</div>`;
     }
@@ -741,7 +742,7 @@ function render() {
   if (hashRetry && currentDoc().sections.length) { hashRetry = false; readHash(); }
   const doc = currentDoc();
   const all = C.allTasks(doc);
-  const open = all.filter(x => !x.task.checked).sort(C.sortTasks);
+  const open = all.filter(x => !x.task.checked).sort(C.sortTasksAt());
   const td = today();
   const lists = doc.sections.map(s => s.name);
   if (!lists.some(l => l.toLowerCase() === 'inbox')) lists.unshift('Inbox');

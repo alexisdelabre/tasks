@@ -305,8 +305,11 @@ export function addMonths(s, n) {
 }
 export function weekday(s) { return fromYmd(s).getUTCDay(); } // 0 = Sunday
 
+// One formatter for each time zone: to build one costs about 50 µs, and the app reads the clock for each row it draws.
+const formatters = new Map();
 function parts(ts, tz) {
-  const f = new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  let f = formatters.get(tz);
+  if (!f) formatters.set(tz, f = new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }));
   const o = {};
   for (const p of f.formatToParts(new Date(ts))) o[p.type] = p.value;
   return o;
@@ -794,6 +797,7 @@ export function reminderEpoch(t, tz = TZ) {
 // Order of tasks: by day, then by hour inside a day. An Anytime task (no hour) sits at the current hour (story L27): today it
 // comes after the tasks whose hour has passed and before the ones to come; on a later day, no hour has passed, so it goes
 // first; on a past day every hour has passed, so it goes last. At the same minute the task with the hour comes first.
+// Build the comparator once for each sort: it reads the clock when it is built, not for each comparison.
 export function sortTasksAt(now = Date.now(), tz = TZ) {
   const td = todayIn(tz, now), hm = nowTimeIn(tz, now);
   const slot = t => t.at ? [t.at, 0] : [t.due > td ? '' : t.due < td ? '99' : hm, 1];
@@ -805,4 +809,3 @@ export function sortTasksAt(now = Date.now(), tz = TZ) {
     return ra - rb || (a.task.prio || 9) - (b.task.prio || 9);
   };
 }
-export function sortTasks(a, b) { return sortTasksAt()(a, b); }
