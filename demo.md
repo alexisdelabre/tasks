@@ -120,6 +120,7 @@ Demo file. Each `## heading` is a list, each `### heading` is a section. One tas
 - [x] Send the invoice done:2026-10-09 ^demo36
 ### Later
 - [ ] Read the security audit ^demo34
+  The PDF is in the shared drive, folder Audits 2026. A task with notes and no chip: Settings › Beta features › L30 moves the notes mark to the top right.
 - [ ] Plan the Q1 roadmap due:2026-11-15 !2 ^demo35
 ### Someday
 
