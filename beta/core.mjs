@@ -807,6 +807,7 @@ export function parseQuick(input, { today = todayIn(), now = nowTimeIn(), lists 
   take(ci(`${B}~start${E}`), () => { r.fixed = true; }); // a fixed start: not before due + at (L24)
   take(ci(`${B}lead:(\\d{1,3})([dh])${E}`), (_, n, u) => { Object.assign(r, parseLead(n + u)); }); // the margin before the deadline (L11, L15)
   take(ci(`${B}by:(\\d{4}-\\d{2}-\\d{2})(?:T(\\d{1,2}:\\d{2}))?${E}`), (_, d, h) => { r.by = h ? `${d}T${h.padStart(5, '0')}` : d; }); // the deadline (L15)
+  take(ci(`${B}by:((?:\\^[a-z0-9]{3,10})?(?:-\\d{1,3}d)?)${E}`), (_, l) => { if (l) (r.links = r.links || []).push(l); }); // a link (L10)
   take(ci(`${B}est:((?:\\d{1,2}h)?(?:\\d{1,3}m)?)${E}`), (_, v) => { const e = parseEst(v); if (!e) return false; r.est = e; }); // the estimate (L15)
 
   // Recurrence.
