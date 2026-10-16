@@ -563,9 +563,12 @@ function lanesHTML(l, rows, groups) {
   return `<div class="lanes-wrap">${html}</div></div>${mode === 'section' ? '<button class="add-sec" data-act="addgroup">+ Section</button>' : ''}`;
 }
 // Urgent = due in the next 7 days (or overdue); important = priority high or medium.
+// Urgent (story L33): the act-by day is within 7 days, the same day as the Date sort and « Can start now ». A task not open yet
+// is not urgent; a late or missed task stays urgent, so it stays in view until it is done or closed.
+const isUrgent = (x, soon = C.addDays(today(), 7)) => { const d = C.actBy(x.task); return !!d && d <= soon && winPhase(x) !== 'before'; };
 function matrixHTML(rows, showList) {
   const soon = C.addDays(today(), 7);
-  const urgent = x => dueOf(x) && dueOf(x) <= soon && !['before', 'missed'].includes(winPhase(x)), important = x => x.task.prio === 1 || x.task.prio === 2;
+  const urgent = x => isUrgent(x, soon), important = x => x.task.prio === 1 || x.task.prio === 2;
   const Q = [
     ['Urgent · important', 'q1', x => urgent(x) && important(x)],
     ['Important · later', 'q2', x => !urgent(x) && important(x)],
@@ -891,7 +894,7 @@ function render() {
     habits: habitsNow.length,
     stickies: tasks.filter(x => stickyLists.includes(x.list)).length,
     agenda: tasks.filter(x => dueOf(x) && dueOf(x) <= td).length,
-    matrix: tasks.filter(x => dueOf(x) && dueOf(x) <= C.addDays(td, 7) && !['before', 'missed'].includes(winPhase(x)) && (x.task.prio === 1 || x.task.prio === 2)).length,
+    matrix: tasks.filter(x => isUrgent(x, C.addDays(td, 7)) && (x.task.prio === 1 || x.task.prio === 2)).length,
   };
   const typeOf = l => C.listTypeOf(doc.sections.find(s => s.name === l));
   const countOf = l => (typeOf(l) === 'habits' ? habitsNow : open).filter(x => x.list === l).length;

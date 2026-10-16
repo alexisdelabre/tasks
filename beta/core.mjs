@@ -896,13 +896,29 @@ export function reminderEpoch(t, tz = TZ) {
 // first; on a past day every hour has passed, so it goes last. At the same minute the task with the hour comes first.
 // Build the comparator once for each sort: it reads the clock when it is built, not for each comparison.
 export function sortTasksAt(now = Date.now(), tz = TZ) {
-  const td = todayIn(tz, now), hm = nowTimeIn(tz, now);
-  const slot = t => t.at ? [t.at, 0] : [t.due > td ? '' : t.due < td ? '99' : hm, 1];
+  const td = todayIn(tz, now), hm = nowTimeIn(tz, now), keys = new Map();
+  // Story L33: open now first (the start has passed, or there is none), by act-by day, then act-by hour; then the tasks not open
+  // yet, by start; then no date. A plain task acts by its date. A late task has the oldest act-by day, so it comes first.
+  // The key of each task is computed once per sort (a window task reads the clock), never once per comparison.
+  const key = t => {
+    let k = keys.get(t);
+    if (k) return k;
+    const ph = t.by || t.fixed ? phase(t, now, tz) : null;
+    if (ph === 'before') k = [1, t.due || '', t.at || '', 0];
+    else {
+      const day = t.by ? actBy(t, tz) : t.due;
+      if (!day) k = [2, '', '', 0];
+      else {
+        const at = t.by ? actByTime(t, tz) : t.at;
+        k = at ? [0, day, at, 0] : [0, day, day > td ? '' : day < td ? '99' : hm, 1];
+      }
+    }
+    keys.set(t, k);
+    return k;
+  };
   return (a, b) => {
-    const da = a.task.due ?? '9999', db = b.task.due ?? '9999';
-    if (da !== db) return da < db ? -1 : 1;
-    const [ta, ra] = slot(a.task), [tb, rb] = slot(b.task);
-    if (ta !== tb) return ta < tb ? -1 : 1;
-    return ra - rb || (a.task.prio || 9) - (b.task.prio || 9);
+    const ka = key(a.task), kb = key(b.task);
+    for (let i = 0; i < 4; i++) if (ka[i] !== kb[i]) return ka[i] < kb[i] ? -1 : 1;
+    return (a.task.prio || 9) - (b.task.prio || 9);
   };
 }
