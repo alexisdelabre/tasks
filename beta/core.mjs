@@ -16,6 +16,12 @@
 //                           by: is the deadline (optional); the token ~firm marks a firm deadline, none = best effort.
 //                           An old sticky with due: reads as by: (story L15) and is written back with by: when edited.
 //                           Claude adds them; the app shows them on their act-by date and on the horizon line.
+//   ## <List name> ~project by:YYYY-MM-DD ~firm  a project list (story L10): steps toward one deadline, in the heading.
+//                           A task line can take its deadline from a link: by:-7d (7 days before the deadline of its own
+//                           project), by:^id-1d (1 day before another task or sticky: its deadline, else its start), by:^id
+//                           (on that day). A task can carry several by: tokens, links and dates; the earliest result is the
+//                           deadline (t.by), so every rule below works on it. A link that cannot resolve (missing task, a loop,
+//                           a project with no deadline) gives no date and marks the task linkBroken.
 //   Window tokens (story L15), on any task: due: (+ at:) is the start, not before; by:YYYY-MM-DD[THH:MM] is the
 //                           deadline, too late after it; lead:Nd or lead:Nh is the safety margin before the deadline
 //                           (story L11), so the task must be done by by − lead (actBy); est:20m, est:2h or est:1h30m
@@ -34,10 +40,14 @@ export const LIST_TYPES = [
   { id: 'habits', label: 'Habits', marker: '~habits', color: '#65a30d', help: 'Small things to repeat every day. Each one keeps a streak.' },
   { id: 'stock', label: 'Stock', marker: '~stock', color: '#e2900b', help: 'Things you buy again. Tap one when you run out; Shopping mode in the shop.' },
   { id: 'stickies', label: 'Stickies', marker: '~stickies', color: '#64748b', help: 'Things not to forget, with an optional date, firm or best effort. Claude adds most of them.' },
+  { id: 'project', label: 'Projects', marker: '~project', color: '#a855f7', help: 'Steps toward one deadline. Each step can take its deadline from the project or from another task.' },
 ];
+// A project list holds tasks: every task rule (start, window, Can start now) applies to it.
+export const isTaskType = type => type === 'tasks' || type === 'project';
 const MARKED = LIST_TYPES.filter(t => t.marker).map(t => ({ ...t, re: new RegExp('\\s+' + t.marker + '$') }));
 export const listTypeOf = s => MARKED.find(t => s?.[t.id])?.id || 'tasks';
 const COLOR_RE = /\s+color:(\S+)$/;
+const HEAD_BY_RE = /\s+by:(\d{4}-\d{2}-\d{2})$/, HEAD_FIRM_RE = /\s+~firm$/;
 export const RARE = 'Rare';
 const TASK_RE = /^- \[([ xX/])\] ?(.*)$/;
 const NOTE_RE = /^(  |\t)/;
@@ -54,6 +64,7 @@ const TOKEN = {
   fixed: /^~start$/,
   lead: /^lead:(\d{1,3})([dh])$/,
   by: /^by:(\d{4}-\d{2}-\d{2})(?:T(\d{1,2}:\d{2}))?$/,
+  link: /^by:(?:\^([a-z0-9]{3,10}))?(?:-(\d{1,3})d)?$/, // a link (story L10): by:-7d, by:^id-1d, by:^id
   est: /^est:(?:(\d{1,2})h)?(?:(\d{1,3})m)?$/,
 };
 
@@ -69,7 +80,7 @@ export function newId() {
 
 // ---------- parse ----------
 export function parseTaskLine(text) {
-  const t = { title: '', due: null, at: null, every: null, streak: null, done: null, prio: 0, tags: [], id: null, firm: false, fixed: false, lead: null, leadH: null, by: null, est: null };
+  const t = { title: '', due: null, at: null, every: null, streak: null, done: null, prio: 0, tags: [], id: null, firm: false, fixed: false, lead: null, leadH: null, by: null, est: null, links: [] };
   const words = [];
   for (const w of text.split(/\s+/).filter(Boolean)) {
     let m;
@@ -85,11 +96,68 @@ export function parseTaskLine(text) {
     else if (TOKEN.fixed.test(w)) t.fixed = true;
     else if ((m = w.match(TOKEN.lead))) { if (m[2] === 'h') t.leadH = +m[1] || null; else t.lead = +m[1] || null; }
     else if ((m = w.match(TOKEN.by))) t.by = m[2] ? `${m[1]}T${m[2].padStart(5, '0')}` : m[1];
+    else if ((m = w.match(TOKEN.link)) && (m[1] || m[2] !== undefined)) t.links.push({ ref: m[1] || null, gap: +(m[2] || 0) });
     else if ((m = w.match(TOKEN.est)) && (m[1] || m[2])) t.est = (+m[1] || 0) * 60 + (+m[2] || 0) || null;
     else words.push(w);
   }
   t.title = words.join(' ');
+  t.byFix = t.links.length ? t.by : null; // a fixed date beside links: one more candidate for the earliest
   return t;
+}
+// ---------- links (story L10) ----------
+export const linkStr = l => 'by:' + (l.ref ? '^' + l.ref : '') + (l.gap || !l.ref ? `-${l.gap}d` : '');
+// "^abc-7d", "-7d", "by:^abc", "2026-10-23" (a fixed date) → { links, byFix }, from a string or an array of them.
+export function parseLinks(v) {
+  const out = { links: [], byFix: null };
+  for (const w of (Array.isArray(v) ? v : String(v ?? '').split(/[\s,]+/)).map(x => String(x).trim()).filter(Boolean)) {
+    const x = w.startsWith('by:') ? w : 'by:' + w;
+    let m;
+    if ((m = x.match(TOKEN.by))) out.byFix = m[2] ? `${m[1]}T${m[2].padStart(5, '0')}` : m[1];
+    else if ((m = x.match(TOKEN.link)) && (m[1] || m[2] !== undefined)) out.links.push({ ref: m[1] || null, gap: +(m[2] || 0) });
+  }
+  return out;
+}
+// Sets t.by on every task with links: the earliest of its fixed date and its links. Each link gets { date, name, ok };
+// the one that sets the deadline gets win. The parser and every operation call it, so all clients read the same dates.
+export function resolveLinks(doc) {
+  const where = new Map();
+  for (const s of doc.sections) for (const it of s.items) if (it.kind === 'task') where.set(it.id, { t: it, s });
+  const done = new Map(), busy = new Set();
+  // The date another task offers to a link: its deadline, else its start.
+  const dateOf = id => {
+    const w = where.get(id);
+    if (!w) return null;
+    if (w.t.links?.length) { const r = solve(w.t, w.s); return r ? r.slice(0, 10) : null; }
+    return w.t.by ? w.t.by.slice(0, 10) : w.t.due || null;
+  };
+  const solve = (t, s) => {
+    if (done.has(t)) return done.get(t);
+    if (busy.has(t)) return null; // a loop
+    busy.add(t);
+    const cands = t.byFix ? [t.byFix] : [];
+    t.linkInfo = t.links.map(l => {
+      const target = l.ref ? where.get(l.ref) : null;
+      const base = l.ref ? dateOf(l.ref) : s.project ? s.by : null;
+      const name = l.ref ? (target ? target.t.title : 'missing task') : s.project ? s.name : 'no project';
+      const date = base ? addDays(base, -l.gap) : null;
+      if (date) cands.push(date);
+      return { ...l, date, name, ok: !!date, project: !l.ref };
+    });
+    busy.delete(t);
+    cands.sort();
+    const r = cands[0] || null;
+    const win = t.linkInfo.find(x => x.date && r && x.date === r.slice(0, 10) && !(t.byFix && t.byFix === r));
+    if (win) win.win = true;
+    t.linkBroken = t.linkInfo.some(x => !x.ok);
+    t.by = r;
+    done.set(t, r);
+    return r;
+  };
+  for (const { t, s } of where.values()) if (t.links?.length) solve(t, s); else if (t.linkInfo) { delete t.linkInfo; t.linkBroken = false; }
+  return doc;
+}
+export function isProject(doc, list) {
+  return !!doc.sections.find(x => x.name.toLowerCase() === String(list || '').toLowerCase())?.project;
 }
 
 export function parse(text) {
@@ -100,14 +168,16 @@ export function parse(text) {
   for (const line of lines) {
     const h = line.match(/^## +(.+?)\s*$/);
     if (h) {
-      let name = h[1], color = null, m, hit;
+      let name = h[1], color = null, by = null, firm = false, m, hit;
       const flags = Object.fromEntries(MARKED.map(t => [t.id, false]));
       for (;;) {
         if ((hit = MARKED.find(t => t.re.test(name)))) { flags[hit.id] = true; name = name.replace(hit.re, ''); }
         else if ((m = name.match(COLOR_RE))) { color = m[1]; name = name.slice(0, m.index); }
+        else if ((m = name.match(HEAD_BY_RE))) { by = m[1]; name = name.slice(0, m.index); }
+        else if ((m = name.match(HEAD_FIRM_RE))) { firm = true; name = name.slice(0, m.index); }
         else break;
       }
-      sec = { name, ...flags, color, raw: line, items: [] };
+      sec = { name, ...flags, color, by, firm, raw: line, items: [] };
       doc.sections.push(sec);
       last = null;
       continue;
@@ -124,7 +194,7 @@ export function parse(text) {
       const t = parseTaskLine(m[2]);
       t.kind = 'task';
       // A sticky keeps its deadline in by: (story L15); an old due: reads as by:, and the line stays as it is until edited.
-      if (sec.stickies && t.due && !t.by) { t.by = t.due; t.due = null; }
+      if (sec.stickies && t.due && !t.by && !t.links.length) { t.by = t.due; t.due = null; }
       t.checked = m[1] !== ' ' && m[1] !== '/';
       t.doing = m[1] === '/';
       t.notes = [];
@@ -149,7 +219,7 @@ export function parse(text) {
     last = null;
     sec.items.push({ kind: 'raw', text: line });
   }
-  return doc;
+  return resolveLinks(doc);
 }
 
 // ---------- serialize ----------
@@ -158,7 +228,8 @@ export function taskLine(t) {
   if (t.due) parts.push('due:' + t.due);
   if (t.at) parts.push('at:' + t.at);
   if (t.fixed) parts.push('~start');
-  if (t.by) parts.push('by:' + t.by);
+  if (t.links?.length) { if (t.byFix) parts.push('by:' + t.byFix); for (const l of t.links) parts.push(linkStr(l)); } // the links, not their result
+  else if (t.by) parts.push('by:' + t.by);
   if (t.firm) parts.push('~firm');
   if (t.leadH) parts.push(`lead:${t.leadH}h`); else if (t.lead) parts.push(`lead:${t.lead}d`);
   if (t.est) parts.push('est:' + estLabel(t.est));
@@ -174,7 +245,7 @@ export function taskLine(t) {
 export function serialize(doc) {
   const out = [...doc.preamble];
   for (const s of doc.sections) {
-    out.push(s.raw ?? `## ${s.name}${MARKED.filter(t => s[t.id]).map(t => ' ' + t.marker).join('')}${s.color ? ' color:' + s.color : ''}`);
+    out.push(s.raw ?? `## ${s.name}${MARKED.filter(t => s[t.id]).map(t => ' ' + t.marker).join('')}${s.by ? ' by:' + s.by : ''}${s.firm ? ' ~firm' : ''}${s.color ? ' color:' + s.color : ''}`);
     for (const it of s.items) {
       if (it.kind === 'raw') out.push(it.text);
       else if (it.kind === 'head') out.push(it.raw ?? `### ${it.name}`);
@@ -292,6 +363,15 @@ function insertTask(section, task, group = '') {
   insertBefore(section, next < 0 ? section.items.length : next, task);
 }
 function dirty(t) { t.raw = null; t.implicitId = false; }
+// by: a date, a link string (« ^abc-7d -7d 2026-10-23 ») or null; links: the same as a list. A plain date clears the links.
+function setBy(t, by, links) {
+  if (by === undefined && links === undefined) return;
+  const a = by === undefined ? { links: [], byFix: null } : parseLinks(by || '');
+  const b = links === undefined ? { links: [], byFix: null } : parseLinks(links);
+  t.links = [...a.links, ...b.links];
+  t.byFix = t.links.length ? a.byFix || b.byFix : null;
+  t.by = t.links.length ? null : a.byFix || b.byFix || null;
+}
 
 // ---------- dates ----------
 const pad = n => String(n).padStart(2, '0');
@@ -369,14 +449,14 @@ export function actByTime(t, tz = TZ) { return t.by && (byTime(t) || t.leadH) ? 
 export function dayOf(t, tz = TZ) { return t.due || (t.by ? actBy(t, tz) : null); }
 // A fixed start with no deadline (story L24): the token ~start on a task with a date and an hour, in a task list. It opens at
 // its start. A deadline window already starts at its date (L15); a sticky, a habit or a stock item has no start of its own.
-export const startAllowed = (t, type = 'tasks') => type === 'tasks' && !t.by && !!(t.due && t.at);
+export const startAllowed = (t, type = 'tasks') => isTaskType(type) && !t.by && !!(t.due && t.at);
 export const fixedStart = (t, type = 'tasks') => !!t.fixed && startAllowed(t, type);
 // The Start row of the edit panel: « Not before » (on) or « Anytime », which button the user can press, and the hint that says
 // why the other one is greyed out (the phone has no hover). Only a task list has the row live. « Anytime » stays pressable on
 // any task: on a deadline window it clears the Date (open now). « Not before » needs a Date with a deadline (the window starts
 // at it, L15), else a Date and a Reminder hour (L24). The rule of startAllowed and phase does not change: this is the panel only.
 export function startRow(t, type = 'tasks') {
-  if (type !== 'tasks') return { on: false, anytime: false, notBefore: false, hint: 'Only a task has a start.' };
+  if (!isTaskType(type)) return { on: false, anytime: false, notBefore: false, hint: 'Only a task has a start.' };
   if (t.by) return { on: !!t.due, anytime: true, notBefore: !!t.due, hint: t.due ? '' : 'Set a Date first.' };
   const ok = startAllowed(t, type);
   return { on: !!(t.fixed && ok), anytime: true, notBefore: ok, hint: ok ? '' : t.due ? 'Set a Reminder hour first.' : 'Set a Date and a Reminder hour first.' };
@@ -508,11 +588,17 @@ export function habitDue(t, today = todayIn()) {
 // ---------- operations ----------
 // An op is plain JSON, so the app can queue it offline and replay it on a fresh copy of the file.
 export function apply(doc, op, today = todayIn()) {
+  const r = applyOp(doc, op, today);
+  resolveLinks(doc); // a moved date moves every task linked to it
+  return r;
+}
+function applyOp(doc, op, today) {
   switch (op.type) {
     case 'add': {
       const t = { kind: 'task', id: op.id || newId(), title: op.title.trim(), due: op.due || null, at: op.at || null, every: op.every || null,
         prio: op.prio || 0, tags: op.tags || [], firm: !!op.firm, fixed: !!op.fixed, ...parseLead(op.leadH ? op.leadH + 'h' : op.lead), by: op.by || null, est: parseEst(op.est),
-        checked: false, doing: false, done: null, notes: op.notes ? op.notes.split('\n') : [], raw: null };
+        checked: false, doing: false, done: null, notes: op.notes ? op.notes.split('\n') : [], raw: null, links: [], byFix: null };
+      setBy(t, op.by, op.links);
       if (isStickies(doc, op.list) && t.due && !t.by) { t.by = t.due; t.due = null; } // a sticky deadline lives in by: (story L15)
       if (isHabits(doc, op.list) && !t.every) t.every = 'day';
       if ('streak' in op) t.streak = op.streak;
@@ -535,7 +621,7 @@ export function apply(doc, op, today = todayIn()) {
       if ('firm' in p) t.firm = !!p.firm;
       if ('fixed' in p) t.fixed = !!p.fixed;
       if ('lead' in p) Object.assign(t, parseLead(p.lead));
-      if ('by' in p) t.by = p.by || null;
+      if ('by' in p || 'links' in p) setBy(t, 'by' in p ? p.by : undefined, p.links); // an explicit deadline replaces the links
       if ('est' in p) t.est = parseEst(p.est);
       if (isStickies(doc, f.section.name)) { // a sticky deadline lives in by: (story L15); clearing due clears it
         if ('due' in p && !('by' in p)) t.by = p.due || null;
@@ -634,8 +720,18 @@ export function apply(doc, op, today = todayIn()) {
     case 'addList': {
       const s = getSection(doc, op.name);
       for (const t of MARKED) if (op[t.id] && !s[t.id]) { s[t.id] = true; s.raw = null; }
+      if (op.by !== undefined && op.by !== s.by) { s.by = op.by || null; s.raw = null; }
+      if (op.firm !== undefined && !!op.firm !== !!s.firm) { s.firm = !!op.firm; s.raw = null; }
       if (op.color && op.color !== s.color) { s.color = op.color; s.raw = null; }
       return op.name;
+    }
+    case 'listDeadline': { // story L10: the deadline of a project list, in its heading
+      const s = doc.sections.find(x => x.name.toLowerCase() === String(op.list || '').toLowerCase());
+      if (!s) return null;
+      if ('by' in op) s.by = op.by || null;
+      if ('firm' in op) s.firm = !!op.firm;
+      s.raw = null;
+      return s.name;
     }
     case 'addGroup': {
       const s = getSection(doc, op.list);
