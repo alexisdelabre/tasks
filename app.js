@@ -572,7 +572,7 @@ const EYE_ON = '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><cir
 const EYE_OFF = '<path d="M3 3l18 18M10.6 6.1A10 10 0 0 1 12 6c6.5 0 10 6 10 6a17 17 0 0 1-3 3.6M6.6 6.6A17 17 0 0 0 2 12s3.5 7 10 7a9.6 9.6 0 0 0 4.4-1"/>';
 const eyeHTML = (k, name, on, off, tip = '') => `<button class="veye${on ? ' on' : ''}" role="switch" aria-checked="${on}" data-opt="${k}"${off ? ` disabled title="${tip}"` : ''}><span class="vi">${icon(on ? EYE_ON : EYE_OFF, 16)}</span>${name}</button>`;
 function optsChanged(l) {
-  const g = prefs.preview !== 0 || prefs.density !== 1 || !prefs.chips.tags || !prefs.chips.dates || !prefs.chips.repeat;
+  const g = prefs.preview !== 0 || prefs.density !== 1 || !prefs.chips.tags || !prefs.chips.dates || !prefs.chips.repeat || LS.get('create', 'show') === 'hide';
   return g || (!!l && (groupMode(l) !== 'section' || !!prefs.showEmpty[l] || !!prefs.showDone[l] || (prefs.sortBy[l] || 'date') !== 'date'));
 }
 function viewOptsHTML() {
@@ -581,7 +581,7 @@ function viewOptsHTML() {
   const groups = l ? C.listGroups(currentDoc(), l) : [];
   const noSec = !l || groupMode(l) !== 'section' || !groups.length;
   return `<div class="vrow"><span class="vlab">Group by</span>${segsHTML('group', GROUP_BY, l ? groupMode(l) : '', off)}<span class="vsp"></span><span class="vlab">Sort</span>${segsHTML('sort', SORTS, l ? prefs.sortBy[l] || 'date' : '', off)}</div>`
-    + `<div class="vrow veyes">${eyeHTML('empty', 'Empty sections', !!(l && prefs.showEmpty[l]), noSec, l ? 'Group by Section, in a list with sections' : tip)}${eyeHTML('done', 'Done tasks', !!(l && prefs.showDone[l]), off, tip)}${eyeHTML('tags', 'Tags', prefs.chips.tags)}${eyeHTML('dates', 'Dates', prefs.chips.dates)}${eyeHTML('repeat', 'Repeat', prefs.chips.repeat)}</div>`
+    + `<div class="vrow veyes">${eyeHTML('empty', 'Empty sections', !!(l && prefs.showEmpty[l]), noSec, l ? 'Group by Section, in a list with sections' : tip)}${eyeHTML('done', 'Done tasks', !!(l && prefs.showDone[l]), off, tip)}${eyeHTML('tags', 'Tags', prefs.chips.tags)}${eyeHTML('dates', 'Dates', prefs.chips.dates)}${eyeHTML('repeat', 'Repeat', prefs.chips.repeat)}${eyeHTML('create', 'Create buttons', LS.get('create', 'show') !== 'hide')}</div>`
     + `<div class="vrow"><span class="vlab">Notes</span>${segsHTML('preview', [[0, 'Off'], [1, '1'], [2, '2'], [3, '3']], prefs.preview)}<span class="vsp"></span><span class="vlab">Density</span>${segsHTML('density', [[0, 'Compact'], [1, 'Normal'], [2, 'Airy']], prefs.density)}</div>`;
 }
 function paintViewOpts() {
@@ -1468,14 +1468,12 @@ function applyTheme(v) {
 }
 $('#themePick').addEventListener('click', e => { const b = e.target.closest('button'); if (b) applyTheme(b.dataset.theme); });
 applyTheme(LS.get('theme', 'auto'));
-// Story L31: Create buttons Show or Hide. Hide removes New list, + Section and the + of a column; the palette still creates.
+// Story L31: the eye « Create buttons » of View options, for every view. Off removes New list, + Section and the + of a column; the palette still creates.
 function applyCreate(v) {
   v = v === 'hide' ? 'hide' : 'show';
   LS.set('create', v);
   if (v === 'hide') document.documentElement.dataset.create = 'hide'; else delete document.documentElement.dataset.create;
-  document.querySelectorAll('#createPick button').forEach(b => b.classList.toggle('on', b.dataset.create === v));
 }
-$('#createPick').addEventListener('click', e => { const b = e.target.closest('button'); if (b) applyCreate(b.dataset.create); });
 applyCreate(LS.get('create', 'show'));
 // Settings and How it works are pages (stories S9, S6): « ‹ Back » returns to the view each one was opened from.
 const PAGES = ['settings', 'help'];
@@ -1537,6 +1535,7 @@ $('#viewOpts').addEventListener('click', e => {
   else if (k === 'empty') prefs.showEmpty[l] = !prefs.showEmpty[l];
   else if (k === 'done') prefs.showDone[l] = !prefs.showDone[l];
   else if (k === 'preview' || k === 'density') prefs[k] = +v;
+  else if (k === 'create') applyCreate(LS.get('create', 'show') === 'hide' ? 'show' : 'hide');
   else prefs.chips[k] = !prefs.chips[k];
   savePrefs(); render();
 });
