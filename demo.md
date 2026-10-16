@@ -51,6 +51,11 @@ Demo file. Each `## heading` is a list, each `### heading` is a section. One tas
   First office day of the month, deadline the 4th. Done: the start moves to the next first office day, the deadline to the 4th of that month.
 - [ ] Restart the home server due:2026-10-11 at:20:00 ~start est:1h !2 ^win07
   A fixed start with no deadline (story L24): the flag ~start (Start « Not before » in the panel) makes the date and hour a start. It opens tomorrow at 20:00: faded until then, out of Matrix and Lanes. After the start, a plain task.
+- [ ] Buy thicker running socks by:2026-10-20 lead:7d !1 ^cs01
+  Can start now (story L23, flag L23): a deadline, no start, act by in 3 days. Turn on Settings › Beta features › L23: the Agenda shows it beside the habits, one task at a time, and the longest, because its act-by day is the nearest.
+- [ ] Ask the shop for a refund by:2026-10-26 est:30m !2 ^cs02
+  Can start now: act by in 16 days, so a short turn on screen. « All 3 » shows the full list.
+- [ ] Order new passport photos by:2026-11-09 est:20m ^cs03
 
 ## Stickies ~stickies color:#64748b/slate
 - [ ] Renew the ID card before the trip by:2026-10-14 ~firm ^demo60
@@ -93,6 +98,8 @@ Demo file. Each `## heading` is a list, each `### heading` is a section. One tas
 - [ ] 🧹 Tidy up due:2026-10-10 every:day streak:2 #1min ^demo55
   Set a 1-minute timer and put things away until it rings.
   ✓ 2026-10-08 2026-10-09
+- [ ] 🦷 Floss due:2026-10-10 every:day streak:0 #1min ^demo56
+  A fifth habit in the Agenda: with « Can start now » (flag L23) the computer shows 3 rounds and « +2 », the phone 4 dots and « +1 ».
 
 ## Groceries ~stock color:#e2900b/amber
 - [ ] Oat milk ^demo20
