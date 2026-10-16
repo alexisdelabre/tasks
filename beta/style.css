@@ -806,8 +806,8 @@ html[data-create="hide"] .newlist, html[data-create="hide"] .nplus, html[data-cr
 .lk-del:hover { background: var(--chip); color: var(--ink); }
 .lk-row.lk-new { grid-template-columns: 92px minmax(0, 1fr); }
 .lk-add { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--ink2); font-size: 13px; }
-.lk-add input { width: 56px; font: inherit; color: var(--ink); background: var(--well); border: 1px solid var(--bd); border-radius: 7px; padding: 3px 6px; }
-.lk-add select { min-width: 0; max-width: 100%; flex: 1 1 140px; font: inherit; color: var(--ink); background: var(--well); border: 1px solid var(--bd); border-radius: 7px; padding: 3px 6px; }
+.lk-add input { flex: 0 0 56px; width: 56px; font: inherit; color: var(--ink); background: var(--well); border: 1px solid var(--bd); border-radius: 7px; padding: 3px 6px; }
+.lk-add select { min-width: 0; max-width: 100%; flex: 1 1 140px; padding-inline: 6px; font: inherit; color: var(--ink); background: var(--well); border: 1px solid var(--bd); border-radius: 7px; padding: 3px 6px; }
 .lk-add button { color: var(--accent); font-weight: 600; padding: 3px 8px; border-radius: 7px; background: var(--accent-soft); }
 .lk-add button:disabled { opacity: .4; }
 @media (max-width: 560px) { .lk-row, .lk-row.lk-new { grid-template-columns: minmax(0, 1fr) auto auto; } .lk-row .lk-k { display: none; } .lk-row.lk-new { grid-template-columns: minmax(0, 1fr); } }
