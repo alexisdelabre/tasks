@@ -43,7 +43,6 @@ const st = {
   view: (v => ['today', 'next', 'all'].includes(v) ? 'agenda' : v)(LS.get('view', 'agenda')),
   range: { id: '3d' }, // Agenda range; back to 3 days when you leave the view
   anchor: null, // first day tapped in the day strip, waiting for the last day of a range
-  csAll: false, // L23: the « Can start now » list open in full
   status: 'ok',
   syncing: false,
 };
@@ -188,7 +187,7 @@ async function loadDemo(force = false) {
   const doc = C.parse((await r.text()).replace(/\b(due|done|by):(\d{4}-\d{2}-\d{2})(?![\d-])/g, (_, k, d) => `${k}:${C.addDays(d, shift)}`)
     .replace(/^ +✓ .*$/gm, l => l.replace(/\d{4}-\d{2}-\d{2}/g, d => C.addDays(d, shift)))); // habit logs move too
   for (const { task: t } of C.allTasks(doc)) {
-    if (t.every && t.due && WEEKDAY_RULE.test(t.every)) { const d = C.nextOccurrence(t.every, C.addDays(t.due, -1)); if (d !== t.due) C.apply(doc, { type: 'update', id: t.id, patch: { due: d, ...(t.by ? { by: C.moveBy('day', t.due, d, t.by) } : {}) } }, td); }
+    if (t.every && t.due && WEEKDAY_RULE.test(t.every)) { const d = C.nextOccurrence(t.every, C.addDays(t.due, -1)); if (d !== t.due) C.apply(doc, { type: 'update', id: t.id, patch: { due: d, ...(t.by && !t.links?.length ? { by: C.moveBy('day', t.due, d, t.by) } : {}) } }, td); }
   }
   st.text = C.serialize(doc); st.pending = [];
   LS.set('demo.day', td);
@@ -233,6 +232,7 @@ function listColor(name) {
 }
 // SF Symbols-like line icons for the phone tab bar.
 const ICON = {
+  flag: '<path d="M6 21V4M6 4h11l-2 4 2 4H6"/>', // a project deadline (story L10)
   notes: '<path d="M5 7h14M5 12h14M5 17h9"/>', // three lines, the last one shorter (story L30)
   // The Agenda icon is a calendar page with today's day number (agendaIcon).
   habits: '<circle cx="12" cy="12" r="8.5"/><path d="m8.2 12.2 2.7 2.7 5-5.4"/>', // the habit ring, checked
@@ -340,6 +340,7 @@ function taskHTML({ task: t, list }, { showList = true, showDate = true, drag = 
   const ph = !stk && (t.by || C.fixedStart(t, listTypeByName(list))) && !t.checked ? C.phase(t) : null; // L24: a fixed start fades before it opens
   if (ph && ph !== 'missed' && C.tooShort(t)) chips.push(`<span class="chip warn">Window too short · ${C.estLabel(t.est)}</span>`);
   if (!stk && t.by && t.firm && !t.checked) chips.push(`<span class="chip firm">Firm</span>`); // a task deadline can be firm too
+  if (t.links?.length && !t.checked) chips.push(...linkChips(t));
   const bar = !stk && t.by ? winBar(t, ph) : '';
   const prev = prefs.preview && !t.checked ? notesPreview(t) : '';
   const sel = editing && editing.id === t.id ? ' sel' : '';
@@ -365,6 +366,15 @@ function winBar(t, ph) {
   const nowMark = now >= a && now <= b && !t.checked ? `<span class="wb-now" style="left:${w(now).toFixed(1)}%"></span>` : '';
   const title = `Window ${lab(st)} → act by ${lab(act)}, deadline ${lab(dl)}`;
   return `<div class="wbar${ph === 'missed' ? ' missed' : ''}" title="${esc(title)}" aria-label="${esc(title)}"><span class="wb-w" style="left:${w(st).toFixed(1)}%;width:${Math.max(0, w(act) - w(st)).toFixed(1)}%"></span><span class="wb-m" style="left:${w(act).toFixed(1)}%;width:${Math.max(0, w(dl) - w(act)).toFixed(1)}%"></span>${nowMark}</div><div class="wlab"><span>${esc(lab(st))}</span><span>act by ${esc(lab(act))}</span><span>${esc(lab(dl).trim())}</span></div>`;
+}
+// Story L10 (round 4): one chip per link, « 7 d before ⚑ Marathon ». The link that sets the deadline is in the accent, the
+// others grey; a link that cannot resolve says « Link broken » in red (a missing task, a loop, a project with no deadline).
+const linkName = l => l.project ? '⚑ ' + l.name : plainTitle(l.name);
+const linkText = l => `${l.gap ? l.gap + ' d before' : 'on'} ${linkName(l)}`;
+function linkChips(t) {
+  const info = t.linkInfo || [];
+  return info.map(l => l.ok ? `<span class="chip link${l.win ? ' win' : ''}" title="${esc(linkText(l))}: ${esc(dayLabel(l.date))}">${esc(linkText(l))}</span>`
+    : `<span class="chip late" title="${esc(l.ref ? 'The task ^' + l.ref + ' is missing, or the links make a loop.' : 'This list has no project deadline.')}">Link broken</span>`);
 }
 // In a stock list, an item in progress ([/]) is in the shopping cart: it shows struck, not half-filled.
 const opts_cart = (t, list) => !t.checked && t.doing && (window.__stock || []).includes(list);
@@ -553,9 +563,12 @@ function lanesHTML(l, rows, groups) {
   return `<div class="lanes-wrap">${html}</div></div>${mode === 'section' ? '<button class="add-sec" data-act="addgroup">+ Section</button>' : ''}`;
 }
 // Urgent = due in the next 7 days (or overdue); important = priority high or medium.
+// Urgent (story L33): the act-by day is within 7 days, the same day as the Date sort and « Can start now ». A task not open yet
+// is not urgent; a late or missed task stays urgent, so it stays in view until it is done or closed.
+const isUrgent = (x, soon = C.addDays(today(), 7)) => { const d = C.actBy(x.task); return !!d && d <= soon && winPhase(x) !== 'before'; };
 function matrixHTML(rows, showList) {
   const soon = C.addDays(today(), 7);
-  const urgent = x => dueOf(x) && dueOf(x) <= soon && !['before', 'missed'].includes(winPhase(x)), important = x => x.task.prio === 1 || x.task.prio === 2;
+  const urgent = x => isUrgent(x, soon), important = x => x.task.prio === 1 || x.task.prio === 2;
   const Q = [
     ['Urgent · important', 'q1', x => urgent(x) && important(x)],
     ['Important · later', 'q2', x => !urgent(x) && important(x)],
@@ -642,6 +655,7 @@ const listTypeByName = l => {
 // Story L19: before its window opens, a task cannot be done yet. Matrix and Lanes (do-now views) leave it out;
 // Agenda, List and Board (plan views) keep it.
 const notYet = x => winPhase(x) === 'before';
+const dueOfRow = x => dueOf(x);
 const dueOf = x => {
   const d = C.dayOf(x.task), ph = winPhase(x), td = today();
   if (ph === 'margin' || ph === 'missed') return d && d < td ? d : C.addDays(td, -1);
@@ -666,9 +680,11 @@ function stickiesHTML(rows) {
 // outline best effort); colour = urgency and action: red within 7 days or late, the accent when an action is due (a lead), else grey.
 // A late sticky (act-by date or deadline passed) stays at Today in red, with « ! » for its count.
 const HZ_TICKS = [[7, '1 wk'], [30, '1 mo'], [90, '3 mo'], [180, '6 mo'], [365, '1 yr']];
-function horizonHTML(stickies, td) {
+// Story L10 (round 4): a project deadline joins the line as a flag in the project color, inside its week group; no text under the line.
+function horizonHTML(stickies, td, projects = []) {
   const days = d => Math.max(0, Math.round((C.fromYmd(d) - C.fromYmd(td)) / 864e5));
-  const on = stickies.filter(x => dueOf(x)).sort((a, b) => dueOf(a).localeCompare(dueOf(b)));
+  const dueOf = x => x.proj ? x.proj.by : dueOfRow(x);
+  const on = [...stickies.filter(x => dueOf(x)), ...projects.filter(s => s.by && s.by >= td).map(s => ({ proj: s, task: { id: 'p:' + s.name, title: s.name, firm: s.firm } }))].sort((a, b) => dueOf(a).localeCompare(dueOf(b)));
   if (!on.length) return '';
   const end = Math.max(120, Math.ceil(days(dueOf(on.at(-1))) * 1.15));
   const pos = n => Math.log(1 + n) / Math.log(1 + end); // 0 … 1
@@ -681,10 +697,12 @@ function horizonHTML(stickies, td) {
   const jx = x => dueOf(x) < td ? '!' : days(dueOf(x));
   const pins = weeks.map(({ items }) => {
     const n = days(dueOf(items[0])), many = items.length > 1, late = dueOf(items[0]) < td;
-    const cls = `hpin${n <= 7 ? ' hot' : ''}${items.some(x => x.task.lead) ? ' act' : ''}${items.some(x => x.task.firm) ? ' firm' : ''}${many ? ' stack' : ''}`;
-    const names = items.map(x => `<span><b>${x.task.lead ? 'Act ' : ''}J-${jx(x)}</b>${esc(plainTitle(x.task.title))}</span>`).join('');
+    const pj = items.find(x => x.proj);
+    const cls = `hpin${n <= 7 ? ' hot' : ''}${items.some(x => x.task.lead) ? ' act' : ''}${items.some(x => x.task.firm) ? ' firm' : ''}${many ? ' stack' : ''}${pj ? ' proj' : ''}`;
+    const names = items.map(x => `<span><b>${x.task.lead ? 'Act ' : ''}J-${jx(x)}</b>${x.proj ? '⚑ ' : ''}${esc(plainTitle(x.task.title))}</span>`).join('');
     const what = items[0].task.lead ? `act by ${esc(dayLabel(dueOf(items[0]), true))}` : esc(dayLabel(dueOf(items[0]), true));
     const label = many ? `${items.length} stickies, the nearest in ${n} days` : `${esc(items[0].task.title)}, ${late ? 'late' : `in ${n} days`}, ${what}`;
+    if (pj) return `<span class="hz-true" data-x="${pos(n)}"></span><button class="${cls}" data-act="hproj" data-list="${esc(pj.proj.name)}" data-x="${pos(n)}" style="--pc:${listColor(pj.proj.name)}" aria-label="${esc(items.map(x => (x.proj ? 'Project ' : '') + x.task.title).join(', '))}, the nearest in ${n} days">${icon(ICON.flag, 12)}<b>${n}</b>${many ? `<span class="hbdg">${items.length}</span>` : ''}<span class="hname">${names}</span></button>`;
     return `<span class="hz-true" data-x="${pos(n)}"></span><button class="${cls}" data-act="${many ? 'hgroup' : 'hpin'}" data-id="${items[0].task.id}" data-x="${pos(n)}" aria-label="${label}">${icon(ICON.stickies, 12)}<b>${late ? '!' : n}</b>${many ? `<span class="hbdg">${items.length}</span>` : ''}<span class="hname">${names}</span></button>`;
   }).join('');
   return `<div class="horizon">${axis}<div class="hz-line"><span class="hz-base"></span>${ticks.map(([n]) => `<i style="left:${pc(n)}"></i>`).join('')}<span class="hz-now"></span>${pins}</div></div>`;
@@ -748,31 +766,44 @@ function habitZone(rows) {
 // flag, the habit zone of a range that starts today shares its row with these tasks: the habits as dots at the left (30 %), and
 // one task at a time at the right, which turns to the next one with a flip. The closer the act-by day, the longer a task stays on
 // screen (csSecs). The rotation follows the clock, not the render: the task on screen is a function of Date.now() (csIndex), so a
-// return to Agenda, a sync or a reload never starts it over. « All N » opens the full list in place and becomes « Less ».
+// return to Agenda, a sync or a reload never starts it over. Story L32 (round 2, C4 + C5): the row is a pile, one button to the page
+// « Can start now » (#canstart): a count square, the task of the clock, ›. The rotation holds every task that can start now, the
+// ones already on a day of the range too, so the row is the same in every range that starts today.
 // On the day strip, an amber number at the bottom right of a day counts these tasks to do by that day (today left out).
-const canStart = x => isWin(x) && listTypeByName(x.list) === 'tasks' && winPhase(x) === 'window';
+const canStart = x => isWin(x) && C.isTaskType(listTypeByName(x.list)) && winPhase(x) === 'window'; // a project task too (L10, T1)
 const daysTo = (d, td) => Math.round((C.fromYmd(d) - C.fromYmd(td)) / 864e5);
 const HD_DESK = 4, HD_PHONE = 5; // rounds in the habits part, « +N » included: 4 on a computer, 5 on the phone line
 const csSecs = j => Math.max(3, Math.min(12, 84 / (j + 7))); // J-0 12 s, J-3 8.4 s, J-7 6 s, J-16 3.7 s, J-21 and later 3 s
-const csSort = rows => rows.sort((x, y) => dueOf(x).localeCompare(dueOf(y)) || (x.task.prio || 4) - (y.task.prio || 4) || x.task.id.localeCompare(y.task.id));
+// The act-by day and hour order the row, the page and the weights, not the Agenda day: a started window task sits on today
+// in the Agenda (dueOf), but it acts by its own day (story L32, fix of 2026-10-16).
+const csDay = x => C.actBy(x.task), csAt = x => C.actByTime(x.task) || '24:00';
+const csSort = rows => rows.sort((x, y) => csDay(x).localeCompare(csDay(y)) || csAt(x).localeCompare(csAt(y)) || (x.task.prio || 4) - (y.task.prio || 4) || x.task.id.localeCompare(y.task.id));
 function csIndex(rows, td, now = Date.now()) {
-  const ms = rows.map(x => csSecs(daysTo(dueOf(x), td)) * 1000), cycle = ms.reduce((s, v) => s + v, 0);
+  const ms = rows.map(x => csSecs(daysTo(csDay(x), td)) * 1000), cycle = ms.reduce((s, v) => s + v, 0);
   let t = now % cycle, i = 0;
   while (t >= ms[i]) t -= ms[i++];
   return i;
 }
 let csLast = { rows: [], td: null }; // the rows of the last render, for the rotation timer
-const csJ = (x, td) => `J-${daysTo(dueOf(x), td)}<span class="cs-jd"> · ${esc(shortDate(dueOf(x)))}</span>`; // the phone card keeps J-x only
-const csRowHTML = (x, td, extra = '') => `<span class="cs-row" data-act="csopen" data-id="${x.task.id}" style="--lc:${listColor(x.list)}"><span class="cs-c"></span><span class="cs-t">${esc(x.task.title)}</span><span class="cs-j${daysTo(dueOf(x), td) <= 7 ? ' soon' : ''}">${csJ(x, td)}</span>${extra}</span>`;
+const csJ = (x, td) => `J-${daysTo(csDay(x), td)}<span class="cs-jd"> · ${esc(shortDate(csDay(x)))}</span>`; // the phone card keeps J-x only
+const csRowHTML = (x, td, extra = '') => `<span class="cs-row" data-id="${x.task.id}" style="--lc:${listColor(x.list)}"><span class="cs-c"></span><span class="cs-t">${esc(x.task.title)}</span><span class="cs-j${daysTo(csDay(x), td) <= 7 ? ' soon' : ''}">${csJ(x, td)}</span>${extra}</span>`;
 function canStartHTML(rows, td) {
-  const all = st.csAll && rows.length > 1, i = csIndex(rows, td);
-  const btn = rows.length > 1 ? `<button class="cs-all" data-act="csall" aria-expanded="${all}">${all ? 'Less' : 'All ' + rows.length}</button>` : '';
-  // Up to 3 tasks, one dot each; more, a short « 2/8 » that keeps its width.
-  const dots = rows.length < 2 || all ? '' : rows.length <= 3 ? `<span class="cs-dots">${rows.map((_, k) => `<i class="${k === i ? 'on' : ''}"></i>`).join('')}</span>` : `<span class="cs-pos">${i + 1}/${rows.length}</span>`;
-  const first = all ? rows[0] : rows[i];
-  const rest = all ? rows.slice(1).map(x => `<div class="cs-card">${csRowHTML(x, td)}</div>`).join('') : '';
+  const x = rows[csIndex(rows, td)], many = rows.length > 1;
   return `<div class="cs" aria-label="Can start now, ${rows.length}"><div class="cs-head">Can start now <span class="when">· ${rows.length}</span></div>`
-    + `<div class="cs-card"><span class="cs-tick${all ? ' still' : ''}" data-cs="${first.task.id}">${csRowHTML(first, td)}</span>${dots}${btn}</div>${rest}</div>`;
+    + `<button class="cs-pile${many ? ' many' : ''}" data-act="cspage" aria-label="Can start now: ${rows.length} task${many ? 's' : ''}. Open the list">${many ? '<span class="pl3"></span><span class="pl2"></span>' : ''}`
+    + `<span class="cs-card"><span class="cs-cnt">${rows.length}</span><span class="cs-tick" data-cs="${x.task.id}">${csRowHTML(x, td)}</span><span class="cs-chev">›</span></span></button></div>`;
+}
+// The page « Can start now » (story L32, P1 + G1): every task that can start now, grouped by act-by day, soonest first. A summary
+// line gives the count, the sum of the estimates and the soonest act-by; each day header gives J-x and its estimate.
+function canStartPage(rows, td) {
+  if (!rows.length) return empty('○', 'Nothing to start now.', 'A task with a deadline shows here once its start has passed.');
+  const est = rs => rs.reduce((a, x) => a + (x.task.est || 0), 0), first = csDay(rows[0]);
+  let html = `<div class="cs-sum meta"><span class="chip">${rows.length} task${rows.length > 1 ? 's' : ''}</span>${est(rows) ? `<span class="chip mono">⏱ ${C.estLabel(est(rows))} in all</span>` : ''}<span class="chip${daysTo(first, td) <= 7 ? ' soon' : ''}">Soonest J-${daysTo(first, td)} · ${esc(dayLabel(first))}</span></div>`;
+  for (const d of [...new Set(rows.map(csDay))]) {
+    const rs = rows.filter(x => csDay(x) === d), j = daysTo(d, td), e = est(rs);
+    html += `<div class="group"><div class="group-h cs-gh${j <= 7 ? ' soon' : ''}">J-${j} · ${esc(dayLabel(d, true))} <span class="n">${rs.length}</span>${e ? `<span class="cs-gsum">${C.estLabel(e)}</span>` : ''}</div><div class="rows">${rs.map(r => taskHTML(r, { showDate: false })).join('')}</div></div>`;
+  }
+  return html;
 }
 function canStartZone(habitsDay, rows, td) {
   if (!habitsDay.length) return `<div class="cs-split solo">${canStartHTML(rows, td)}</div>`;
@@ -793,8 +824,8 @@ function canStartZone(habitsDay, rows, td) {
 function agendaHTML(tasks, habitsDay, td) {
   const r = st.range, [a, b] = rangeSpan(r, td);
   const overdue = tasks.filter(x => dueOf(x) && dueOf(x) < td);
-  let html = horizonHTML(tasks.filter(x => (window.__stickies || []).includes(x.list)), td);
-  const cs = flagOn('L23') && a === td && b ? csSort(tasks.filter(x => canStart(x) && dueOf(x) > b)) : [];
+  let html = horizonHTML(tasks.filter(x => (window.__stickies || []).includes(x.list)), td, currentDoc().sections.filter(s => s.project));
+  const cs = flagOn('L23') && a === td && b ? csSort(tasks.filter(canStart)) : [];
   csLast = { rows: cs, td };
   html += a === td ? (cs.length ? canStartZone(habitsDay, cs, td) : habitZone(habitsDay)) : ''; // a short zone: the agenda keeps its room for the tasks
   html += group('Overdue', overdue, { late: true });
@@ -823,7 +854,7 @@ function stripHTML(tasks, td) {
   let h = '';
   for (let i = 0; i < STRIP_DAYS; i++) {
     const d = C.addDays(td, i), n = tasks.filter(x => dueOf(x) === d).length;
-    const cs = flagOn('L23') && i ? tasks.filter(x => dueOf(x) === d && canStart(x)).length : 0; // L23: to start now, act by that day
+    const cs = flagOn('L23') && i ? tasks.filter(x => canStart(x) && csDay(x) === d).length : 0; // L23: to start now, act by that day
     const cls = d === a || d === b ? 'end' : d > a && d < b ? 'in' : '';
     const wd = C.fromYmd(d).toLocaleDateString('en-GB', { weekday: 'short', timeZone: 'UTC' }).slice(0, 2);
     h += `<button data-day="${d}" class="${cls}${C.weekday(d) === 1 && i ? ' wk' : ''}" aria-label="${esc(dayLabel(d, true))}${n ? `, ${n} task${n > 1 ? 's' : ''}` : ''}${cs ? `, ${cs} to start now` : ''}"><span class="w">${wd}</span><span class="dn">${+d.slice(8)}</span><span class="dots">${'<i></i>'.repeat(Math.min(n, 3))}</span>${cs ? `<span class="csb">${cs}</span>` : ''}</button>`;
@@ -863,7 +894,7 @@ function render() {
     habits: habitsNow.length,
     stickies: tasks.filter(x => stickyLists.includes(x.list)).length,
     agenda: tasks.filter(x => dueOf(x) && dueOf(x) <= td).length,
-    matrix: tasks.filter(x => dueOf(x) && dueOf(x) <= C.addDays(td, 7) && !['before', 'missed'].includes(winPhase(x)) && (x.task.prio === 1 || x.task.prio === 2)).length,
+    matrix: tasks.filter(x => isUrgent(x, C.addDays(td, 7)) && (x.task.prio === 1 || x.task.prio === 2)).length,
   };
   const typeOf = l => C.listTypeOf(doc.sections.find(s => s.name === l));
   const countOf = l => (typeOf(l) === 'habits' ? habitsNow : open).filter(x => x.list === l).length;
@@ -909,6 +940,9 @@ function render() {
     ({ html, title, sub } = agendaHTML(tasks, habitsDay, td));
     tools = `<div class="ranges" role="group" aria-label="Range">${RANGES.map(x => `<button data-range="${x.id}" class="${st.range.id === x.id ? 'on' : ''}" aria-pressed="${st.range.id === x.id}">${x.label}</button>`).join('')}</div>`;
     strip = stripHTML(tasks, td);
+  } else if (v === 'canstart') {
+    title = 'Can start now'; sub = 'Soonest act-by first';
+    html = canStartPage(csSort(tasks.filter(canStart)), td);
   } else if (v === 'settings') {
     title = 'Settings';
   } else if (v === 'help') {
@@ -954,6 +988,7 @@ function render() {
     if (stockLists.includes(l)) { html = stockHTML(l, all, groups); sub = 'Stock list'; }
     else if (habitLists.includes(l)) { html = habitsListHTML(l, habits.filter(x => x.list === l), groups); sub = 'Habits'; }
     else if (stickyLists.includes(l)) { html = stickiesHTML(rows.filter(x => !x.task.checked)); sub = 'Stickies'; }
+    else if (typeOf(l) === 'project' && mode === 'list') { html = projectHead(doc.sections.find(s => s.name === l), rows, td) + (groups.length ? sectionsHTML(l, rows, groups) : group('Steps', [...rows].sort((a, b) => (dueOf(a) || '9').localeCompare(dueOf(b) || '9')), { showList: false })); sub = 'Project'; }
     else if (mode === 'board') { html = boardHTML(l, rows, groups); wide = true; }
     else if (mode === 'lanes') { html = lanesHTML(l, all.filter(x => x.list === l), groups); wide = true; }
     else if (mode === 'matrix') { html = matrixHTML(rows.filter(x => !x.task.checked), false); wide = true; }
@@ -972,7 +1007,7 @@ function render() {
   $('#list').innerHTML = html;
   $('#settings').hidden = v !== 'settings';
   $('#help').hidden = v !== 'help';
-  $('#backSettings').hidden = !PAGES.includes(v);
+  $('#backSettings').hidden = !PAGES.includes(v) && v !== 'canstart'; // L32: the page « Can start now » has Back too
   document.body.classList.toggle('on-settings', PAGES.includes(v));
   $('#settingsBtn').classList.toggle('on', v === 'settings');
   document.title = `Tasks${MARK ? ' · ' + MARK : ''}${counts.agenda ? ` (${counts.agenda})` : ''}`;
@@ -982,6 +1017,23 @@ function render() {
   layoutHorizon();
   if (hashTask) setTimeout(openHashTask); else if (!hashRetry) writeHash(); // keep the anchor until the file can resolve it
 }
+// Story L10 (round 4): the head of a project page. The flag in the project color, the deadline (a date field: the change moves
+// every linked task), Firm or Best effort, the J-x count, the number of steps, the sum of the estimates and the next act-by day.
+function projectHead(s, rows, td) {
+  const open = rows.filter(x => !x.task.checked), n = s.by ? daysTo(s.by, td) : null;
+  const est = open.reduce((a, x) => a + (x.task.est || 0), 0), noEst = open.filter(x => !x.task.est).length;
+  const next = open.filter(x => dueOf(x)).sort((a, b) => dueOf(a).localeCompare(dueOf(b)))[0];
+  const broken = open.filter(x => x.task.linkBroken).length;
+  const chips = [`<span class="chip">${open.length} step${open.length === 1 ? '' : 's'}</span>`,
+    est ? `<span class="chip mono">⏱ ${C.estLabel(est)}${noEst ? ` · ${noEst} with no estimate` : ''}</span>` : `<span class="chip">No estimate yet</span>`,
+    next ? `<span class="chip act${daysTo(dueOf(next), td) <= 7 ? ' late' : ''}">Next: act by ${esc(dayLabel(dueOf(next)))}</span>` : '',
+    broken ? `<span class="chip late">${broken} link${broken > 1 ? 's' : ''} broken</span>` : ''].join('');
+  return `<div class="proj-head" style="--pc:${listColor(s.name)}"><span class="proj-flag">${icon(ICON.flag, 18)}</span><div class="proj-main">`
+    + `<div class="proj-row"><b class="proj-j">${n === null ? 'No deadline' : n < 0 ? 'Passed' : 'J-' + n}</b><label class="proj-by"><span>Deadline</span><input type="date" id="projBy" value="${s.by || ''}" aria-label="Project deadline"></label>`
+    + `<div class="prio-pick proj-firm"><button type="button" data-act="projfirm" data-f="1" class="${s.firm ? 'on' : ''}"${s.by ? '' : ' disabled'}>Firm</button><button type="button" data-act="projfirm" data-f="0" class="${s.firm ? '' : 'on'}"${s.by ? '' : ' disabled'}>Best effort</button></div></div>`
+    + `<div class="meta">${chips}</div>${s.by ? '' : '<p class="proj-hint">Set the deadline: a step with « by:-7d » takes its date 7 days before it.</p>'}</div></div>`;
+}
+$('#list').addEventListener('change', e => { if (e.target.id === 'projBy') commit({ type: 'listDeadline', list: st.view.slice(5), by: e.target.value || null }); });
 const empty = (big, a, b) => `<div class="empty"><div class="big">${big}</div><div>${esc(a)}</div><div class="small">${esc(b)}</div></div>`;
 
 function setView(v) {
@@ -1033,7 +1085,7 @@ $('#addForm').addEventListener('submit', e => {
   e.preventDefault();
   const q = parsedInput();
   if (!q || !q.title) return;
-  commit({ type: 'add', id: C.newId(), title: q.title, list: q.list, due: q.due, at: q.at, every: q.every, prio: q.prio, tags: q.tags, firm: q.firm, fixed: q.fixed, lead: q.lead, leadH: q.leadH, by: q.by, est: q.est });
+  commit({ type: 'add', id: C.newId(), title: q.title, list: q.list, due: q.due, at: q.at, every: q.every, prio: q.prio, tags: q.tags, firm: q.firm, fixed: q.fixed, lead: q.lead, leadH: q.leadH, by: q.by, links: q.links, est: q.est });
   $('#addInput').value = '';
   updatePreview();
 });
@@ -1105,11 +1157,12 @@ $('#list').addEventListener('click', e => {
   }
   if (act === 'addgroup') return addGroupPrompt();
   if (act === 'hcheck') return toggle(e.target.closest('[data-id]').dataset.id, null); // habit zone: check in place
-  if (act === 'csall') { st.csAll = !st.csAll; return render(); } // L23: the full list in place, and back
-  if (act === 'csopen') return openTask(e.target.closest('[data-id]').dataset.id); // L23: a row opens its task
+  if (act === 'cspage') return openPage('canstart'); // L32: the row opens the page, Back returns to the Agenda
   if (act === 'hopen') return setView('habits'); // the rest of the habit zone opens the Habits view
   if (act === 'hpin') return openTask(e.target.closest('[data-id]').dataset.id); // a note of the horizon opens its sticky
   if (act === 'hgroup') return setView('stickies'); // a week group opens the Stickies view, sorted by date
+  if (act === 'hproj') return setView('list:' + e.target.closest('[data-list]').dataset.list); // a flag opens its project (L10)
+  if (act === 'projfirm') return commit({ type: 'listDeadline', list: st.view.slice(5), firm: e.target.closest('[data-f]').dataset.f === '1' });
   if (act === 'restock') {
     const id = e.target.closest('[data-id]').dataset.id, t = C.findTask(currentDoc(), id)?.task;
     commit({ type: 'reopen', id }); if (t) toast(`To buy · ${t.title.slice(0, 40)}`); return;
@@ -1256,7 +1309,8 @@ const winBy = () => $('#fBy').value ? ($('#fByAt').value ? `${$('#fBy').value}T$
 const isStkList = list => (window.__stickies || []).includes(list);
 function paintWin(list = $('#fList').value) {
   const type = C.listTypeOf(currentDoc().sections.find(s => s.name === list));
-  const stk = isStkList(list), show = type === 'tasks' || stk;
+  const stk = isStkList(list), show = C.isTaskType(type) || stk;
+  paintLinks(list);
   // Story L24: the Start row, from the core (startRow). « Anytime » stays pressable on a task; on a deadline window it clears the
   // Date (open now). « Not before » needs a Date with a deadline, else a Date and a Reminder hour; the hint says why when it is greyed out.
   const sr = C.startRow({ due: $('#fDue').value || null, at: $('#fAt').value || null, by: $('#fBy').value || null, fixed: editing.fixed }, type);
@@ -1282,6 +1336,48 @@ function paintWin(list = $('#fList').value) {
       + (t.due ? ` Window from ${when(t.due, t.at)}.` : stk ? (t.lead || t.leadH ? ' The horizon line shows this date, not the deadline.' : ' No margin: the horizon line shows the deadline.') : ' No start: the window opens now.')
       + (C.tooShort(t) ? ` Too short for ${C.estLabel(t.est)}: start earlier.` : '');
 }
+// Story L10 (round 4): the Link rows of the Deadline card, under Deadline. One row per link: « 7 d before ⚑ Marathon (1 Nov) »
+// and its result; the earliest is ticked and fills the Deadline field. The last row adds a link: the project deadline or a task
+// with a date, and a gap in days. Rows are divs, not labels, so a click never lands on another control of the card.
+function linkTargets(list) {
+  const doc = currentDoc(), s = doc.sections.find(x => x.name === list), opts = [];
+  if (s?.project) opts.push(['', `⚑ ${s.name}${s.by ? ' · ' + shortDate(s.by) : ' · no deadline'}`]);
+  const rows = C.allTasks(doc).filter(x => !x.task.checked && x.task.id !== editing.id && (x.task.by || x.task.due) && !(window.__habits || []).includes(x.list));
+  rows.sort((a, b) => (b.list === list) - (a.list === list) || (C.byDate(a.task) || a.task.due).localeCompare(C.byDate(b.task) || b.task.due));
+  for (const x of rows.slice(0, 60)) opts.push([x.task.id, `${plainTitle(x.task.title)} · ${shortDate(C.byDate(x.task) || x.task.due)}`]);
+  return opts;
+}
+function linkPreview(list) {
+  const doc = currentDoc(), s = doc.sections.find(x => x.name === list);
+  const rows = editing.links.map(str => {
+    const l = C.parseLinks(str).links[0], f = l.ref ? C.findTask(doc, l.ref) : null;
+    const base = l.ref ? (f ? C.byDate(f.task) || f.task.due : null) : s?.project ? s.by : null;
+    const name = l.ref ? (f ? f.task.title : 'missing task') : s?.project ? s.name : 'no project';
+    return { ...l, str, name, project: !l.ref, base, date: base ? C.addDays(base, -l.gap) : null };
+  });
+  const win = rows.filter(r => r.date).sort((a, b) => a.date.localeCompare(b.date))[0];
+  if (win) win.win = true;
+  return rows;
+}
+function paintLinks(list = $('#fList').value) {
+  const box = $('#linkRows'), stk = isStkList(list), type = C.listTypeOf(currentDoc().sections.find(s => s.name === list));
+  if (!(C.isTaskType(type) || stk)) { box.innerHTML = ''; return; }
+  const rows = linkPreview(list);
+  const row = (r, i) => `<div class="lk-row${r.win ? ' win' : ''}${r.date ? '' : ' bad'}"><span class="lk-k">Link</span><span class="lk-t">${esc(r.gap ? r.gap + ' d before' : 'On')} ${esc(r.project ? '⚑ ' + r.name : plainTitle(r.name))}${r.base ? ` <small>(${esc(shortDate(r.base))})</small>` : ''}</span><b class="lk-r">${r.date ? '→ ' + esc(shortDate(r.date)) + (r.win ? ' ✓' : '') : 'Link broken'}</b><button type="button" class="lk-del" data-i="${i}" aria-label="Remove this link">×</button></div>`;
+  const opts = linkTargets(list);
+  box.innerHTML = rows.map(row).join('') + `<div class="lk-row lk-new"><span class="lk-k">${rows.length ? '' : 'Link'}</span><span class="lk-add"><input type="number" id="lkGap" min="0" max="365" value="${rows.length ? 1 : 7}" aria-label="Days before"><span>d before</span><select id="lkTo" aria-label="Link to">${opts.map(([v, t]) => `<option value="${esc(v)}">${esc(t)}</option>`).join('')}</select><button type="button" id="lkAdd"${opts.length ? '' : ' disabled'}>Add</button></span></div>`;
+  if (rows.length) { const w = rows.find(r => r.win); $('#fBy').value = w ? w.date : ''; $('#fByAt').value = ''; editing.linkBy = $('#fBy').value || null; }
+}
+$('#linkRows').addEventListener('click', e => {
+  const del = e.target.closest('.lk-del');
+  if (del) { editing.links.splice(+del.dataset.i, 1); if (!editing.links.length) editing.linkBy = undefined; return paintWin(); }
+  if (e.target.closest('#lkAdd')) {
+    const gap = Math.max(0, Math.min(365, Math.round(+$('#lkGap').value || 0))), to = $('#lkTo').value;
+    const str = (to ? '^' + to : '') + (gap || !to ? `-${gap}d` : '');
+    if (!editing.links.includes(str)) editing.links.push(str);
+    paintWin();
+  }
+});
 function paintState() { for (const b of $('#fState').children) b.classList.toggle('on', +b.dataset.s === (editing.doing ? 1 : 0)); }
 function markSelected() { document.querySelectorAll('.task.sel').forEach(x => x.classList.remove('sel')); if (editing) document.querySelector(`.task[data-id="${editing.id}"]`)?.classList.add('sel'); }
 function openTask(id) {
@@ -1313,6 +1409,9 @@ function openTask(id) {
   editing.fixed = !!t.fixed;
   editing.margin = leadStr(t);
   editing.est = t.est || 0;
+  editing.links = (t.links || []).map(l => C.linkStr(l).slice(3));
+  editing.orig.links = [...editing.links];
+  editing.linkBy = editing.links.length ? C.byDate(t) : undefined;
   paintStreak(f.section.name);
   paintWin(f.section.name);
   paintGroups(f.section.name, f.group);
@@ -1443,7 +1542,10 @@ function saveEdit() {
     fixed: !!editing.fixed, // L24: the core drops it when it would do nothing (no hour, a deadline, not a task list)
     lead: editing.margin || null,
   };
-  if (!$('#dlBlock').hidden) { next.by = winBy(); next.est = next.by || next.fixed ? editing.est || null : null; if (!next.by) { next.lead = null; next.firm = false; } }
+  if (!$('#dlBlock').hidden) { next.by = winBy(); next.est = next.by || next.fixed || editing.links.length ? editing.est || null : null; if (!next.by && !editing.links.length) { next.lead = null; next.firm = false; } }
+  // Story L10: the links win while the Deadline field shows their result; a new date in the field replaces them.
+  const linksChanged = JSON.stringify(editing.links) !== JSON.stringify(o.links);
+  if (editing.links.length && 'by' in next) { if (next.by === (editing.linkBy ?? o.by ?? null)) delete next.by; else editing.links = []; }
   if (isStkList(next.list)) { next.due = o.due ?? null; next.at = o.at ?? null; } // a sticky has no start: its greyed Date stays as it was
   const patch = {};
   for (const k of Object.keys(next)) {
@@ -1451,6 +1553,8 @@ function saveEdit() {
     if (a !== b) patch[k] = next[k];
   }
   if (patch.list && !('group' in patch)) patch.group = next.group; // a moved task keeps the section picked for its new list
+  delete patch.links;
+  if (linksChanged || (o.links.length && 'by' in patch)) { patch.links = editing.links; if (!editing.links.length) patch.by = next.by ?? null; } // no link left: the date stays, as a plain deadline
   const id = editing.id;
   editing = null;
   if (Object.keys(patch).length) commit({ type: 'update', id, patch });
@@ -1643,7 +1747,7 @@ function palPick(i) {
   if (it.kind === 'list') return setView('list:' + it.name);
   if (it.kind === 'newlist') { openNewList('tasks'); $('#nlName').value = it.name; return; }
   if (it.kind === 'newsec') { freshSecs.add(it.list + '|' + it.name); commit({ type: 'addGroup', list: it.list, name: it.name }); toast('Section added'); return; }
-  if (it.kind === 'add') { const q = it.q; if (q.title) { commit({ type: 'add', id: C.newId(), title: q.title, list: q.list, due: q.due, at: q.at, every: q.every, prio: q.prio, tags: q.tags, firm: q.firm, fixed: q.fixed, lead: q.lead, leadH: q.leadH, by: q.by, est: q.est }); toast('Added to ' + q.list); } return; }
+  if (it.kind === 'add') { const q = it.q; if (q.title) { commit({ type: 'add', id: C.newId(), title: q.title, list: q.list, due: q.due, at: q.at, every: q.every, prio: q.prio, tags: q.tags, firm: q.firm, fixed: q.fixed, lead: q.lead, leadH: q.leadH, by: q.by, links: q.links, est: q.est }); toast('Added to ' + q.list); } return; }
   setView('list:' + it.r.list); // the task opens where it lives
   openTask(it.r.task.id);
   document.querySelector(`#list .task[data-id="${it.r.task.id}"]`)?.scrollIntoView({ block: 'center' });
@@ -1729,7 +1833,7 @@ function readHash() {
   const ti = h.indexOf('/task/');
   if (ti >= 0) { hashTask = h.slice(ti + 6); h = h.slice(0, ti); }
   const [head, a, b] = h.split('/');
-  if (['habits', 'stickies', 'matrix', 'lists', 'done', 'settings', 'help'].includes(head)) st.view = head;
+  if (['habits', 'stickies', 'matrix', 'lists', 'done', 'settings', 'help'].includes(head) || (head === 'canstart' && flagOn('L23'))) st.view = head;
   else if (head === 'agenda') {
     st.view = 'agenda'; st.anchor = null; st.range = { id: '3d' };
     if (a && RANGES.some(x => x.id === a)) st.range = { id: a };
@@ -1765,18 +1869,16 @@ setInterval(() => { if (today() !== lastDay) { lastDay = today(); DEMO ? loadDem
 // Story L27: an Anytime task sits at the current hour. When the hour of an open task of today passes, that task moves above
 // the Anytime ones: render again, unless the edit panel is open (the next change or sync sorts it).
 // Story L23: the rotation. The task on screen follows the clock (csIndex); this timer only plays the flip when the slot changes.
-// It waits while the pointer is on the card or the full list is open, then shows the task of the current slot.
+// It waits while the pointer is on the pile, then shows the task of the current slot.
 setInterval(() => {
-  const box = document.querySelector('.cs-tick:not(.still)'), rows = csLast.rows;
-  if (!box || rows.length < 2 || document.visibilityState !== 'visible' || box.closest('.cs-card').matches(':hover')) return;
+  const box = document.querySelector('.cs-tick'), rows = csLast.rows;
+  if (!box || rows.length < 2 || document.visibilityState !== 'visible' || box.closest('.cs-pile').matches(':hover')) return;
   const i = csIndex(rows, csLast.td), x = rows[i];
   if (!x || box.dataset.cs === x.task.id) return;
   box.dataset.cs = x.task.id;
   const old = box.querySelector('.cs-row:last-child'), tmp = document.createElement('span');
   tmp.innerHTML = csRowHTML(x, csLast.td); const n = tmp.firstElementChild; n.classList.add('cs-in'); box.appendChild(n);
   if (old) { old.classList.add('cs-out'); setTimeout(() => old.remove(), matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 600); }
-  box.closest('.cs-card').querySelectorAll('.cs-dots i').forEach((d, k) => d.classList.toggle('on', k === i));
-  const pos = box.closest('.cs-card').querySelector('.cs-pos'); if (pos) pos.textContent = `${i + 1}/${rows.length}`;
 }, 250);
 let lastHm = C.nowTimeIn();
 setInterval(() => {

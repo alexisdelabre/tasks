@@ -139,3 +139,39 @@ Demo file. Each `## heading` is a list, each `### heading` is a section. One tas
   Warm up 15 min, then 6 × 800 m at 5 km pace, 2 min jog between.
 ### Week 2 · Peak
 - [ ] Long run 26 km due:2026-10-18 at:09:00 ^demo42
+- [ ] Own link outside a project by:-3d ^demo43
+  Counter-example: « by:-3d » needs a project list. Training is a task list: « Link broken ».
+
+## Half marathon ~project by:2026-11-08 ~firm color:#c026d3/fuchsia
+- [ ] Buy race socks by:-7d by:^demo42-1d lead:3d !2 ^demp01
+  Two links: 7 days before the race, and 1 day before the long run of Training. The earliest wins: the day before the long run. The Margin of 3 d then gives the act-by day. Open the task: the Link rows show each date.
+- [ ] Book the hotel by:-14d est:20m ^demp02
+  One link to the project deadline: 14 days before it. The flag of the project on the horizon line opens this page.
+- [ ] Pick up the race bib by:-1d est:30m ^demp03
+  1 day before the race. It can start now, so it shows in « Can start now » (flag L23).
+- [ ] Plan the race pace by:^demp03-2d est:15m ^demp04
+  A chain: 2 days before « Pick up the race bib », which is 1 day before the race.
+- [ ] Pack the race bag by:^demp03 est:20m ^demp05
+  « by:^id » with no gap: on the same day as the bib.
+- [ ] Order energy gels by:-10d lead:21d ^demp06
+  Counter-example: a Margin longer than the time left. Act by has passed, so the task is red, in its margin.
+
+## Move out ~project by:2026-11-30 color:#0891b2/cyan
+- [ ] Cancel the home insurance due:2026-10-20 by:-0d lead:31d ~firm ^demp10
+  « by:-0d »: the deadline of the project itself. The notice is 1 month (Margin 31 d), and the start is 20 Oct: not open yet.
+- [ ] Pack the boxes by:-2d est:4h ^demp11
+- [ ] Sell the sofa by:^demp11-7d est:1h ^demp12
+  A chain: 7 days before « Pack the boxes ». Move the project deadline: every step moves with it.
+- [ ] Book the van by:^demp12-3d est:10m ^demp13
+  A chain of three: van → sofa → boxes → project.
+- [ ] Return the router by:2026-10-14 by:-10d ^demp14
+  A fixed date beside a link: the earliest wins, here the fixed date.
+
+## Link edge cases ~project color:#64748b/slate
+- [ ] Loop A: it points to Loop B by:^demp21-1d ^demp20
+  Counter-example: A points to B and B points to A. No date: « Link broken ».
+- [ ] Loop B: it points to Loop A by:^demp20-1d ^demp21
+- [ ] Points to a deleted task by:^zzzzz-2d ^demp22
+  Counter-example: the task ^zzzzz does not exist. No date: « Link broken ».
+- [ ] Own link in a project with no deadline by:-3d ^demp23
+  Counter-example: this project has no deadline yet. Set one at the top of the page and the link works.

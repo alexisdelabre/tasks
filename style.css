@@ -730,6 +730,20 @@ dialog.palette::backdrop { background: rgba(10, 10, 15, .28); }
 .cs-head { font-size: 13px; line-height: 18px; height: 18px; font-weight: 620; color: var(--ink); padding: 0 2px; white-space: nowrap; }
 .cs-head .when { font: 12px var(--mono); color: var(--ink3); font-weight: 400; }
 .cs-card { display: flex; align-items: center; gap: 8px; height: 44px; padding: 0 6px 0 12px; background: var(--surf); border: 1px solid var(--bd); border-radius: 12px; min-width: 0; }
+/* Story L32 (round 2, C4 + C5): the row is a pile, one button to the page. Two paper edges under the card say « more behind »;
+   the count square leads, the chevron ends. The card keeps its 44 px; the edges add 8 px under it. */
+.cs-pile { position: relative; display: block; width: 100%; min-width: 0; padding: 0; text-align: left; cursor: pointer; }
+.cs-pile.many { padding-bottom: 8px; }
+.cs-pile .pl2, .cs-pile .pl3 { position: absolute; left: 10px; right: 10px; bottom: 4px; height: 44px; background: var(--surf); border: 1px solid var(--bd); border-radius: 12px; }
+.cs-pile .pl3 { left: 20px; right: 20px; bottom: 0; opacity: .7; }
+.cs-pile .cs-card { position: relative; width: 100%; padding-left: 7px; transition: background .15s, border-color .15s; }
+.cs-cnt { flex: none; min-width: 30px; height: 30px; padding: 0 6px; border-radius: 9px; background: var(--accent-soft); color: var(--accent); font: 700 13px var(--mono); display: grid; place-items: center; font-variant-numeric: tabular-nums; }
+.cs-chev { flex: none; color: var(--ink3); font-size: 20px; line-height: 1; padding: 0 6px 2px 2px; transition: transform .15s, color .15s; }
+@media (hover: hover) { .cs-pile:hover .cs-card { background: var(--hov); border-color: color-mix(in srgb, var(--accent) 35%, var(--bd)); } .cs-pile:hover .cs-chev { color: var(--accent); transform: translateX(2px); } }
+.cs-sum { margin: 4px 0 6px; }
+.chip.soon { color: var(--amber); background: var(--amber-soft); }
+.cs-gh.soon { color: var(--amber); }
+.cs-gsum { margin-left: auto; font: 11.5px var(--mono); color: var(--ink3); font-weight: 400; }
 .cs-tick { position: relative; display: block; flex: 1; min-width: 0; height: 100%; overflow: hidden; perspective: 500px; }
 .cs-card > .cs-row { flex: 1; }
 .cs-row { position: absolute; inset: 0; display: flex; align-items: center; gap: 10px; min-width: 0; cursor: pointer; backface-visibility: hidden; }
@@ -738,17 +752,12 @@ dialog.palette::backdrop { background: rgba(10, 10, 15, .28); }
 .cs-t { flex: 1; min-width: 0; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cs-j { font: 11.5px var(--mono); color: var(--ink3); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .cs-j.soon { color: var(--amber); }
-.cs-dots { display: flex; gap: 3px; padding-left: 4px; }
-.cs-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--bd); }
-.cs-dots i.on { background: var(--accent); }
-.cs-pos { font: 11px var(--mono); color: var(--ink3); font-variant-numeric: tabular-nums; min-width: 3.2em; text-align: right; }
-.cs-all { flex: none; min-width: 56px; text-align: center; font: 600 11.5px var(--mono); color: var(--accent); background: var(--accent-soft); border-radius: 8px; padding: 5px 8px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .cs-in { animation: csIn .55s cubic-bezier(.3, .7, .2, 1) both; transform-origin: 50% 50% -22px; }
 .cs-out { animation: csOut .55s cubic-bezier(.3, .7, .2, 1) both; transform-origin: 50% 50% -22px; }
 @keyframes csIn { from { transform: rotateX(-90deg); } }
 @keyframes csOut { to { transform: rotateX(90deg); } }
 @media (prefers-reduced-motion: reduce) { .cs-in, .cs-out { animation: none; } }
-@media (hover: hover) { .cs-row:hover .cs-t { text-decoration: underline; text-underline-offset: 3px; } .hdot:hover { border-color: var(--ink3); } }
+@media (hover: hover) { .hdot:hover { border-color: var(--ink3); } }
 .strip button { position: relative; }
 .strip .csb { position: absolute; right: -3px; bottom: -4px; min-width: 16px; height: 16px; padding: 0 3px; border-radius: 8px; background: var(--amber); color: #fff; font: 700 9.5px/12px var(--mono); text-align: center; border: 2px solid var(--well); }
 @media (max-width: 760px) {
@@ -766,3 +775,39 @@ dialog.palette::backdrop { background: rgba(10, 10, 15, .28); }
 }
 /* Story L31: Create buttons on Hide. The palette (⌘K) creates tasks, lists and sections. */
 html[data-create="hide"] .newlist, html[data-create="hide"] .nplus, html[data-create="hide"] .add-sec, html[data-create="hide"] .add-col, html[data-create="hide"] .col-add { display: none !important; }
+
+/* Deadline projects (story L10, round 4). A project is a flag in its list color: on the sidebar mark, the horizon line and the
+   project head. A link chip is mono; the link that sets the deadline is in the accent, the others grey. */
+.mk.project { width: 10px; height: 11px; margin: 0 4px; background: var(--c); clip-path: polygon(0 0, 100% 0, 78% 34%, 100% 68%, 18% 68%, 18% 100%, 0 100%); }
+.chip.link { font-family: var(--mono); color: var(--ink3); background: var(--chip); }
+.chip.link.win { color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+.hpin.proj, .hpin.proj.firm { background: var(--pc); border-color: var(--pc); color: #fff; }
+.hpin.proj.hot { box-shadow: 0 0 0 2px var(--red); }
+.hpin.proj.stack { box-shadow: 3px -3px 0 -1.5px var(--surf), 3px -3px 0 0 var(--ink3), 6px -6px 0 -1.5px var(--surf), 6px -6px 0 0 var(--ink3); }
+.proj-head { display: flex; gap: 12px; align-items: flex-start; background: var(--surf); border: 1px solid var(--bd); border-radius: 14px; padding: 12px 14px; margin: 4px 0 10px; }
+.proj-flag { flex: none; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; background: var(--pc); color: #fff; }
+.proj-main { min-width: 0; flex: 1; display: grid; gap: 8px; }
+.proj-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.proj-j { font: 700 24px var(--mono); letter-spacing: -.03em; }
+.proj-by { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ink2); }
+.proj-by input { font: inherit; color: var(--ink); background: var(--well); border: 1px solid var(--bd); border-radius: 8px; padding: 4px 8px; }
+.proj-firm button:disabled { opacity: .4; cursor: default; }
+.proj-hint { margin: 0; font-size: 12.5px; color: var(--ink3); }
+.link-rows { display: grid; }
+.link-rows:empty { display: none; }
+.lk-row { display: grid; grid-template-columns: 92px minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 8px 12px; border-top: 1px solid var(--line); font-size: 13.5px; background: color-mix(in srgb, var(--accent) 6%, transparent); }
+.lk-row .lk-k { color: var(--ink2); font-size: 13px; }
+.lk-row .lk-t { min-width: 0; overflow-wrap: anywhere; }
+.lk-row .lk-t small { color: var(--ink3); font-family: var(--mono); }
+.lk-row .lk-r { font: 600 12px var(--mono); color: var(--ink3); white-space: nowrap; }
+.lk-row.win .lk-r { color: var(--accent); }
+.lk-row.bad .lk-r { color: var(--red); }
+.lk-del { width: 24px; height: 24px; border-radius: 6px; color: var(--ink3); font-size: 16px; line-height: 1; }
+.lk-del:hover { background: var(--chip); color: var(--ink); }
+.lk-row.lk-new { grid-template-columns: 92px minmax(0, 1fr); }
+.lk-add { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--ink2); font-size: 13px; }
+.lk-add input { flex: 0 0 56px; width: 56px; font: inherit; color: var(--ink); background: var(--well); border: 1px solid var(--bd); border-radius: 7px; padding: 3px 6px; }
+.lk-add select { min-width: 0; max-width: 100%; flex: 1 1 140px; padding-inline: 6px; font: inherit; color: var(--ink); background: var(--well); border: 1px solid var(--bd); border-radius: 7px; padding: 3px 6px; }
+.lk-add button { color: var(--accent); font-weight: 600; padding: 3px 8px; border-radius: 7px; background: var(--accent-soft); }
+.lk-add button:disabled { opacity: .4; }
+@media (max-width: 560px) { .lk-row, .lk-row.lk-new { grid-template-columns: minmax(0, 1fr) auto auto; } .lk-row .lk-k { display: none; } .lk-row.lk-new { grid-template-columns: minmax(0, 1fr); } }
