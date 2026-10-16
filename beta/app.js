@@ -771,16 +771,19 @@ const canStart = x => isWin(x) && C.isTaskType(listTypeByName(x.list)) && winPha
 const daysTo = (d, td) => Math.round((C.fromYmd(d) - C.fromYmd(td)) / 864e5);
 const HD_DESK = 4, HD_PHONE = 5; // rounds in the habits part, « +N » included: 4 on a computer, 5 on the phone line
 const csSecs = j => Math.max(3, Math.min(12, 84 / (j + 7))); // J-0 12 s, J-3 8.4 s, J-7 6 s, J-16 3.7 s, J-21 and later 3 s
-const csSort = rows => rows.sort((x, y) => dueOf(x).localeCompare(dueOf(y)) || (x.task.prio || 4) - (y.task.prio || 4) || x.task.id.localeCompare(y.task.id));
+// The act-by day and hour order the row, the page and the weights, not the Agenda day: a started window task sits on today
+// in the Agenda (dueOf), but it acts by its own day (story L32, fix of 2026-10-16).
+const csDay = x => C.actBy(x.task), csAt = x => C.actByTime(x.task) || '24:00';
+const csSort = rows => rows.sort((x, y) => csDay(x).localeCompare(csDay(y)) || csAt(x).localeCompare(csAt(y)) || (x.task.prio || 4) - (y.task.prio || 4) || x.task.id.localeCompare(y.task.id));
 function csIndex(rows, td, now = Date.now()) {
-  const ms = rows.map(x => csSecs(daysTo(dueOf(x), td)) * 1000), cycle = ms.reduce((s, v) => s + v, 0);
+  const ms = rows.map(x => csSecs(daysTo(csDay(x), td)) * 1000), cycle = ms.reduce((s, v) => s + v, 0);
   let t = now % cycle, i = 0;
   while (t >= ms[i]) t -= ms[i++];
   return i;
 }
 let csLast = { rows: [], td: null }; // the rows of the last render, for the rotation timer
-const csJ = (x, td) => `J-${daysTo(dueOf(x), td)}<span class="cs-jd"> · ${esc(shortDate(dueOf(x)))}</span>`; // the phone card keeps J-x only
-const csRowHTML = (x, td, extra = '') => `<span class="cs-row" data-id="${x.task.id}" style="--lc:${listColor(x.list)}"><span class="cs-c"></span><span class="cs-t">${esc(x.task.title)}</span><span class="cs-j${daysTo(dueOf(x), td) <= 7 ? ' soon' : ''}">${csJ(x, td)}</span>${extra}</span>`;
+const csJ = (x, td) => `J-${daysTo(csDay(x), td)}<span class="cs-jd"> · ${esc(shortDate(csDay(x)))}</span>`; // the phone card keeps J-x only
+const csRowHTML = (x, td, extra = '') => `<span class="cs-row" data-id="${x.task.id}" style="--lc:${listColor(x.list)}"><span class="cs-c"></span><span class="cs-t">${esc(x.task.title)}</span><span class="cs-j${daysTo(csDay(x), td) <= 7 ? ' soon' : ''}">${csJ(x, td)}</span>${extra}</span>`;
 function canStartHTML(rows, td) {
   const x = rows[csIndex(rows, td)], many = rows.length > 1;
   return `<div class="cs" aria-label="Can start now, ${rows.length}"><div class="cs-head">Can start now <span class="when">· ${rows.length}</span></div>`
@@ -791,10 +794,10 @@ function canStartHTML(rows, td) {
 // line gives the count, the sum of the estimates and the soonest act-by; each day header gives J-x and its estimate.
 function canStartPage(rows, td) {
   if (!rows.length) return empty('○', 'Nothing to start now.', 'A task with a deadline shows here once its start has passed.');
-  const est = rs => rs.reduce((a, x) => a + (x.task.est || 0), 0), first = dueOf(rows[0]);
+  const est = rs => rs.reduce((a, x) => a + (x.task.est || 0), 0), first = csDay(rows[0]);
   let html = `<div class="cs-sum meta"><span class="chip">${rows.length} task${rows.length > 1 ? 's' : ''}</span>${est(rows) ? `<span class="chip mono">⏱ ${C.estLabel(est(rows))} in all</span>` : ''}<span class="chip${daysTo(first, td) <= 7 ? ' soon' : ''}">Soonest J-${daysTo(first, td)} · ${esc(dayLabel(first))}</span></div>`;
-  for (const d of [...new Set(rows.map(dueOf))]) {
-    const rs = rows.filter(x => dueOf(x) === d), j = daysTo(d, td), e = est(rs);
+  for (const d of [...new Set(rows.map(csDay))]) {
+    const rs = rows.filter(x => csDay(x) === d), j = daysTo(d, td), e = est(rs);
     html += `<div class="group"><div class="group-h cs-gh${j <= 7 ? ' soon' : ''}">J-${j} · ${esc(dayLabel(d, true))} <span class="n">${rs.length}</span>${e ? `<span class="cs-gsum">${C.estLabel(e)}</span>` : ''}</div><div class="rows">${rs.map(r => taskHTML(r, { showDate: false })).join('')}</div></div>`;
   }
   return html;
@@ -848,7 +851,7 @@ function stripHTML(tasks, td) {
   let h = '';
   for (let i = 0; i < STRIP_DAYS; i++) {
     const d = C.addDays(td, i), n = tasks.filter(x => dueOf(x) === d).length;
-    const cs = flagOn('L23') && i ? tasks.filter(x => dueOf(x) === d && canStart(x)).length : 0; // L23: to start now, act by that day
+    const cs = flagOn('L23') && i ? tasks.filter(x => canStart(x) && csDay(x) === d).length : 0; // L23: to start now, act by that day
     const cls = d === a || d === b ? 'end' : d > a && d < b ? 'in' : '';
     const wd = C.fromYmd(d).toLocaleDateString('en-GB', { weekday: 'short', timeZone: 'UTC' }).slice(0, 2);
     h += `<button data-day="${d}" class="${cls}${C.weekday(d) === 1 && i ? ' wk' : ''}" aria-label="${esc(dayLabel(d, true))}${n ? `, ${n} task${n > 1 ? 's' : ''}` : ''}${cs ? `, ${cs} to start now` : ''}"><span class="w">${wd}</span><span class="dn">${+d.slice(8)}</span><span class="dots">${'<i></i>'.repeat(Math.min(n, 3))}</span>${cs ? `<span class="csb">${cs}</span>` : ''}</button>`;
