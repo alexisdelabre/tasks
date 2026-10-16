@@ -764,3 +764,5 @@ dialog.palette::backdrop { background: rgba(10, 10, 15, .28); }
   .cs-t { font-size: 14.5px; }
   .cs-tick:not(.still) .cs-jd { display: none; }
 }
+/* Story L31: Create buttons on Hide. The palette (⌘K) creates tasks, lists and sections. */
+html[data-create="hide"] .newlist, html[data-create="hide"] .nplus, html[data-create="hide"] .add-sec, html[data-create="hide"] .add-col, html[data-create="hide"] .col-add { display: none !important; }

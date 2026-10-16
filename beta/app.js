@@ -868,7 +868,7 @@ function render() {
   const typeOf = l => C.listTypeOf(doc.sections.find(s => s.name === l));
   const countOf = l => (typeOf(l) === 'habits' ? habitsNow : open).filter(x => x.list === l).length;
   let nav = `<div class="brand">Tasks${MARK ? ` <span class="chan">${esc(MARK)}</span>` : ''}</div>`;
-  nav += `<button class="add-task" data-act="add" title="Add a task (n)"><span class="ico">+</span>New task<kbd>n</kbd></button>`;
+  // Story L31: no New task button; the palette (and the n key) add a task.
   nav += `<button class="add-task search-btn" data-act="search" title="Search tasks and lists (/ or ⌘K)"><span class="ico"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></span>Search<kbd>⌘K</kbd></button>`;
   nav += VIEWS.map(v => `<button data-view="${v.id}" class="${st.view === v.id ? 'on' : ''}"><span class="ico">${v.id === 'stickies' ? '<span class="stk-ico"></span>' : v.ico || agendaIcon(17)}</span>${v.label}<span class="count ${v.id === 'agenda' && late ? 'late' : ''}">${counts[v.id] || ''}</span></button>`).join('');
   nav += `<div class="sep"></div>` + listsNav(lists, typeOf, countOf) + `<div class="sep"></div>`;
@@ -1468,6 +1468,15 @@ function applyTheme(v) {
 }
 $('#themePick').addEventListener('click', e => { const b = e.target.closest('button'); if (b) applyTheme(b.dataset.theme); });
 applyTheme(LS.get('theme', 'auto'));
+// Story L31: Create buttons Show or Hide. Hide removes New list, + Section and the + of a column; the palette still creates.
+function applyCreate(v) {
+  v = v === 'hide' ? 'hide' : 'show';
+  LS.set('create', v);
+  if (v === 'hide') document.documentElement.dataset.create = 'hide'; else delete document.documentElement.dataset.create;
+  document.querySelectorAll('#createPick button').forEach(b => b.classList.toggle('on', b.dataset.create === v));
+}
+$('#createPick').addEventListener('click', e => { const b = e.target.closest('button'); if (b) applyCreate(b.dataset.create); });
+applyCreate(LS.get('create', 'show'));
 // Settings and How it works are pages (stories S9, S6): « ‹ Back » returns to the view each one was opened from.
 const PAGES = ['settings', 'help'];
 const backTo = {};
@@ -1582,7 +1591,14 @@ function palResults(q) {
   if (!words.length) return items;
   for (const s of doc.sections) if (words.every(w => C.wordStart(w).test(C.fold(s.name)))) items.push({ kind: 'list', name: s.name });
   for (const r of C.searchTasks(doc, q).slice(0, 50)) items.push({ kind: 'task', r });
-  items.push({ kind: 'add', title: q.trim() });
+  // Story L31: the palette add reads the quick-add tokens (date, time, repeat, !prio, #tag, @list), as the add bar does.
+  const p = C.parseQuick(q.trim(), { today: today(), now: C.nowTimeIn(), lists: window.__lists || [] });
+  items.push({ kind: 'add', title: q.trim(), q: { ...p, title: p.title || q.trim(), list: p.list || 'Inbox' } });
+  // A list or a section of the open list, when that name is new: with Create buttons on Hide, the palette is the only way to create them.
+  const name = q.replace(/\s+/g, ' ').trim(), cl = curList(), low = name.toLowerCase();
+  if (!(window.__lists || []).some(l => l.toLowerCase() === low)) items.push({ kind: 'newlist', name });
+  const sec = cl && doc.sections.find(x => x.name === cl);
+  if (sec && !sec.items.some(it => it.kind === 'head' && it.name.toLowerCase() === low)) items.push({ kind: 'newsec', name, list: cl });
   return items;
 }
 function paintPalette() {
@@ -1591,14 +1607,16 @@ function paintPalette() {
   palSel = Math.max(0, Math.min(palSel, palItems.length - 1));
   let h = '', sec = null;
   palItems.forEach((it, i) => {
-    const k = it.kind === 'list' ? 'Lists' : it.kind === 'add' ? 'New task' : it.r.task.checked ? 'Done' : 'Tasks';
+    const k = it.kind === 'list' ? 'Lists' : it.kind === 'add' ? 'New task' : it.kind === 'newlist' || it.kind === 'newsec' ? 'Create' : it.r.task.checked ? 'Done' : 'Tasks';
     if (k !== sec) { h += `<div class="pal-sec">${k}</div>`; sec = k; }
     const sel = i === palSel ? ' sel' : '';
     if (it.kind === 'list') {
       const s = doc.sections.find(x => x.name === it.name);
       h += `<button type="button" class="pal-item${sel}" data-i="${i}" role="option"><span class="pal-ck pal-go" style="--c:${listColor(it.name)}"></span><span class="pal-b"><span class="pal-t">Go to ${hlq(it.name, q)}</span></span><span class="pal-w">${C.allTasks({ sections: [s] }).filter(x => !x.task.checked).length} open</span></button>`;
     } else if (it.kind === 'add') {
-      h += `<button type="button" class="pal-item${sel}" data-i="${i}" role="option"><span class="pal-ck pal-plus">+</span><span class="pal-b"><span class="pal-t">Add « ${esc(it.title)} »</span></span><span class="pal-w">Inbox</span></button>`;
+      h += `<button type="button" class="pal-item${sel}" data-i="${i}" role="option"><span class="pal-ck pal-plus">+</span><span class="pal-b"><span class="pal-t">Add « ${esc(it.q.title)} »</span></span><span class="pal-w">${esc([it.q.list, it.q.due ? dayLabel(it.q.due) + (it.q.at ? ' · ' + it.q.at : '') : ''].filter(Boolean).join(' · '))}</span></button>`;
+    } else if (it.kind === 'newlist' || it.kind === 'newsec') {
+      h += `<button type="button" class="pal-item${sel}" data-i="${i}" role="option"><span class="pal-ck pal-plus">+</span><span class="pal-b"><span class="pal-t">${it.kind === 'newlist' ? 'New list' : 'New section'} « ${esc(it.name)} »</span></span><span class="pal-w">${it.kind === 'newsec' ? 'in ' + esc(it.list) : 'choose the type'}</span></button>`;
     } else {
       const x = it.r, t = x.task, d = t.checked ? null : dueOf(x);
       const meta = [x.list, t.checked ? (t.done ? 'done ' + dayLabel(t.done) : 'done') : d ? dayLabel(d) + (t.at ? ' · ' + t.at : '') : ''].filter(Boolean).join(' · ');
@@ -1624,7 +1642,9 @@ function palPick(i) {
   const it = palItems[i]; if (!it) return;
   pal.close();
   if (it.kind === 'list') return setView('list:' + it.name);
-  if (it.kind === 'add') { if (it.title) { commit({ type: 'add', id: C.newId(), title: it.title, list: 'Inbox' }); toast('Added to Inbox'); } return; }
+  if (it.kind === 'newlist') { openNewList('tasks'); $('#nlName').value = it.name; return; }
+  if (it.kind === 'newsec') { freshSecs.add(it.list + '|' + it.name); commit({ type: 'addGroup', list: it.list, name: it.name }); toast('Section added'); return; }
+  if (it.kind === 'add') { const q = it.q; if (q.title) { commit({ type: 'add', id: C.newId(), title: q.title, list: q.list, due: q.due, at: q.at, every: q.every, prio: q.prio, tags: q.tags, firm: q.firm, fixed: q.fixed, lead: q.lead, leadH: q.leadH, by: q.by, est: q.est }); toast('Added to ' + q.list); } return; }
   setView('list:' + it.r.list); // the task opens where it lives
   openTask(it.r.task.id);
   document.querySelector(`#list .task[data-id="${it.r.task.id}"]`)?.scrollIntoView({ block: 'center' });
