@@ -27,6 +27,7 @@ const FLAGS = [
   // { id: 'L12', name: 'Calendar view', since: '2026-10-20' },
   { id: 'L30', name: 'Notes mark at the top right, with a peek', since: '2026-10-15' },
   { id: 'L23', name: 'Can start now, one task at a time', since: '2026-10-15' },
+  { id: 'L34', name: 'Sidebar width: drag its edge', since: '2026-10-16' },
 ];
 // The test flag X0 exists only for e2e-channels.mjs: on localhost, with tasks.e2e set, so the frames never show it.
 if (location.hostname === 'localhost' && LS.get('e2e', false)) FLAGS.push({ id: 'X0', name: 'Test flag (local only)', since: '2026-10-15' });
@@ -1601,6 +1602,46 @@ $('#flagList').addEventListener('click', e => {
   LS.set('flags', flagState); applyFlags(); renderFlags(); render();
 });
 renderFlags(); // Settings can open on a reload without openSettings()
+
+// Story L34 (flag L34): the sidebar width. Drag the right edge of the sidebar (computer only). The width snaps to steps of
+// 16 px from 200 to 424 px, so a size is easy to find again; the default is 264 px, for long project names. A pill gives the
+// value while you drag and for 1.5 s after, then fades. Double-click: back to 264 px. Arrow keys on the focused edge: one step.
+// The width lives in this browser (tasks.navWidth). The handle sits outside #nav, because each render rewrites the sidebar.
+const NAV_MIN = 200, NAV_MAX = 424, NAV_STEP = 16, NAV_DEF = 264, NAV_SHOW = 1500;
+const navSnap = w => Math.max(NAV_MIN, Math.min(NAV_MAX, NAV_MIN + Math.round((w - NAV_MIN) / NAV_STEP) * NAV_STEP));
+let navW = navSnap(+LS.get('navWidth', NAV_DEF) || NAV_DEF), ngTimer = null;
+const grip = document.createElement('div');
+Object.assign(grip, { className: 'nav-grip', id: 'navGrip', tabIndex: 0, title: `Drag to change the width · double-click: ${NAV_DEF} px` });
+for (const [k, v] of [['role', 'separator'], ['aria-orientation', 'vertical'], ['aria-label', 'Sidebar width'], ['aria-valuemin', NAV_MIN], ['aria-valuemax', NAV_MAX]]) grip.setAttribute(k, v);
+grip.innerHTML = '<span class="ng-val" id="navGripVal" hidden></span>';
+document.body.append(grip);
+const ngVal = grip.firstChild;
+function ngHide() { ngVal.classList.add('out'); ngTimer = setTimeout(() => { ngVal.hidden = true; ngVal.classList.remove('out'); }, 300); }
+function setNavW(w, show = true, y = null) {
+  navW = navSnap(w);
+  document.documentElement.style.setProperty('--nav-w', navW + 'px');
+  grip.setAttribute('aria-valuenow', navW);
+  LS.set('navWidth', navW);
+  if (show) {
+    ngVal.textContent = navW + ' px';
+    if (y !== null) grip.style.setProperty('--gy', Math.max(24, Math.min(innerHeight - 24, y)) + 'px');
+    ngVal.hidden = false; ngVal.classList.remove('out'); clearTimeout(ngTimer);
+    if (!grip.classList.contains('drag')) ngTimer = setTimeout(ngHide, NAV_SHOW);
+  }
+  layoutHorizon();
+}
+setNavW(navW, false);
+grip.addEventListener('pointerdown', e => { if (e.button) return; e.preventDefault(); grip.setPointerCapture(e.pointerId); grip.classList.add('drag'); document.body.classList.add('resizing'); setNavW(e.clientX, true, e.clientY); });
+grip.addEventListener('pointermove', e => { if (grip.classList.contains('drag')) setNavW(e.clientX, true, e.clientY); });
+const ngEnd = e => { if (!grip.classList.contains('drag')) return; grip.classList.remove('drag'); document.body.classList.remove('resizing'); setNavW(navW, true, e.clientY); };
+grip.addEventListener('pointerup', ngEnd);
+grip.addEventListener('pointercancel', ngEnd);
+grip.addEventListener('dblclick', e => setNavW(NAV_DEF, true, e.clientY));
+grip.addEventListener('keydown', e => {
+  const d = { ArrowLeft: -NAV_STEP, ArrowRight: NAV_STEP }[e.key];
+  if (d) { e.preventDefault(); setNavW(navW + d); }
+  else if (e.key === 'Home' || e.key === 'End') { e.preventDefault(); setNavW(e.key === 'Home' ? NAV_MIN : NAV_MAX); }
+});
 // Story L30: the notes bubble opens under its mark; near the bottom of the screen it opens above it.
 const placeBubble = e => {
   const m = e.target.closest?.('.nmark'); if (!m) return;
