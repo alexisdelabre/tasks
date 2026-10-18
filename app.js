@@ -1585,8 +1585,10 @@ const PAGES = ['settings', 'help'];
 const backTo = {};
 function openPage(v) { if (st.view !== v) { backTo[v] = st.view; setView(v); } }
 const closePage = () => setView(backTo[st.view] || 'agenda');
+const fillSettings = () => { $('#sToken').value = cfg.token; $('#sRepo').value = cfg.repo; $('#sBranch').value = cfg.branch; $('#sPath').value = cfg.path; };
+// Fill the form only on the way in: a failed sync (401, 404) calls this again every 10 s, and it must not wipe a token being typed.
 function openSettings() {
-  $('#sToken').value = cfg.token; $('#sRepo').value = cfg.repo; $('#sBranch').value = cfg.branch; $('#sPath').value = cfg.path;
+  if (st.view !== 'settings') fillSettings();
   renderFlags();
   openPage('settings');
 }
@@ -1601,7 +1603,7 @@ $('#flagList').addEventListener('click', e => {
   flagState[b.closest('[data-flag]').dataset.flag] = b.dataset.on === '1';
   LS.set('flags', flagState); applyFlags(); renderFlags(); render();
 });
-renderFlags(); // Settings can open on a reload without openSettings()
+fillSettings(); renderFlags(); // Settings can open on a reload without openSettings()
 
 // Story L34 (flag L34): the sidebar width. Drag the right edge of the sidebar (computer only). The width snaps to steps of
 // 16 px from 200 to 424 px, so a size is easy to find again; the default is 264 px, for long project names. A pill gives the
