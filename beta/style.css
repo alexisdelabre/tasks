@@ -553,9 +553,23 @@ dialog.new-list { width: min(420px, calc(100vw - 24px)); }
 .settings-page { padding: 18px 16px 40px; }
 @media (max-width: 760px) { .settings-page { padding-bottom: calc(var(--bar-top) + 28px); } }
 main:not(.wide) > .settings-page { width: 100%; max-width: 760px; margin-inline: auto; }
-#settingsForm { display: flex; flex-direction: column; gap: 26px; }
+#settingsForm { display: flex; flex-direction: column; gap: 32px; }
+/* Two bands (2026-10-20): « This device » and « Your data », each a title, one line that says where it is kept, and its groups.
+   On a computer the bands sit side by side and the page fits with no scroll; on a phone they stack. */
+.set-band { display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+.set-band-head h2 { margin: 0; padding: 0 4px; font-size: 17px; font-weight: 650; }
+.set-band-head p { margin: 2px 0 0; padding: 0 4px; font-size: 13px; color: var(--ink3); }
+.set-end { display: flex; align-items: center; gap: 16px; padding: 12px 4px 0; border-top: 1px solid var(--bd); font-size: 13px; color: var(--ink3); }
+.set-end .link { text-decoration: none; font-weight: 500; }
+.set-end .set-note { font-size: 13px; }
+.set-ver { margin-left: auto; }
+@media (min-width: 1000px) {
+  body.on-settings main, body.on-settings main:not(.wide) > .settings-page { max-width: 1100px; }
+  #settingsForm { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 32px; row-gap: 24px; }
+  .set-end { grid-column: 1 / -1; }
+}
 .set-group { display: flex; flex-direction: column; gap: 8px; }
-.set-group h2 { margin: 0; padding: 0 4px; font-size: 12px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; color: var(--ink3); }
+.set-group h3 { margin: 0; padding: 0 4px; font-size: 12px; font-weight: 650; letter-spacing: .06em; text-transform: uppercase; color: var(--ink3); }
 .set-group > .muted { padding: 0 4px; }
 .set-card, .settings-page .fields { background: var(--surf); border: 1px solid var(--bd); border-radius: var(--r); overflow: hidden; }
 .set-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 48px; padding: 8px 14px; text-align: left; }

@@ -48,45 +48,48 @@
     <!-- Settings page (story S9): one scroll, grouped cards; it replaced the settings sheet. -->
     <section class="settings-page" id="settings" hidden>
       <form id="settingsForm" autocomplete="off">
-        <div class="set-group">
-          <h2>Appearance</h2>
-          <div class="set-card"><div class="set-row"><span>Theme</span>
-            <div class="prio-pick" id="themePick">
-              <button type="button" data-theme="auto">Auto</button>
-              <button type="button" data-theme="light">Light</button>
-              <button type="button" data-theme="dark">Dark</button>
-            </div></div></div>
-        </div>
-        <div class="set-group">
-          <h2>GitHub connection</h2>
-          <div class="set-card">
-            <div class="fields">
-              <label><span>Token</span><input id="sToken" type="password" placeholder="github_pat_…" autocomplete="off"></label>
-              <label><span>Repository</span><input id="sRepo" placeholder="owner/repo"></label>
-              <label><span>Branch</span><input id="sBranch" placeholder="main"></label>
-              <label><span>File</span><input id="sPath" placeholder="Tasks.md"></label>
-            </div>
-            <button type="submit" class="set-row set-save">Save and sync</button>
+        <!-- Two bands (2026-10-20): what stays in this browser, and the task file on GitHub. Help and the version sit in a footer line. -->
+        <div class="set-band">
+          <div class="set-band-head"><h2>This device</h2><p>Kept in this browser only.</p></div>
+          <div class="set-group">
+            <h3>Appearance</h3>
+            <div class="set-card"><div class="set-row"><span>Theme</span>
+              <div class="prio-pick" id="themePick">
+                <button type="button" data-theme="auto">Auto</button>
+                <button type="button" data-theme="light">Light</button>
+                <button type="button" data-theme="dark">Dark</button>
+              </div></div></div>
           </div>
-          <p class="muted small" id="sStatus"></p>
-          <p class="set-foot">A fine-grained token with <b>Contents: Read and write</b> on one repository. It stays in this browser. <button type="button" class="link" id="sHelp">Setup steps ›</button></p>
+          <div class="set-group">
+            <h3>Beta features</h3>
+            <div class="set-card" id="flagList"></div>
+            <p class="set-foot">Switches for features in test. They stay in this browser.</p>
+          </div>
         </div>
-        <div class="set-group">
-          <h2>Help</h2>
-          <div class="set-card"><button type="button" class="set-row" id="sHowTo"><span>How it works</span><span class="set-note">Views, quick add, file format, reminders ›</span></button></div>
+        <div class="set-band">
+          <div class="set-band-head"><h2>Your data</h2><p>The task file on GitHub, the same on every device.</p></div>
+          <div class="set-group">
+            <h3>GitHub connection</h3>
+            <div class="set-card">
+              <div class="fields">
+                <label><span>Token</span><input id="sToken" type="password" placeholder="github_pat_…" autocomplete="off"></label>
+                <label><span>Repository</span><input id="sRepo" placeholder="owner/repo"></label>
+                <label><span>Branch</span><input id="sBranch" placeholder="main"></label>
+                <label><span>File</span><input id="sPath" placeholder="Tasks.md"></label>
+              </div>
+              <button type="submit" class="set-row set-save">Save and sync</button>
+            </div>
+            <p class="muted small" id="sStatus"></p>
+            <p class="set-foot">A fine-grained token with <b>Contents: Read and write</b> on one repository. It stays in this browser. <button type="button" class="link" id="sHelp">Setup steps ›</button></p>
+          </div>
+          <div class="set-group">
+            <h3>Maintenance</h3>
+            <div class="set-card"><button type="button" class="set-row" id="clearDoneBtn"><span>Clear done tasks older than 30 days</span></button></div>
+          </div>
         </div>
-        <div class="set-group">
-          <h2>Maintenance</h2>
-          <div class="set-card"><button type="button" class="set-row" id="clearDoneBtn"><span>Clear done tasks older than 30 days</span></button></div>
-        </div>
-        <div class="set-group">
-          <h2>Beta features</h2>
-          <div class="set-card" id="flagList"></div>
-          <p class="set-foot">Switches for features in test. They stay in this browser.</p>
-        </div>
-        <div class="set-group">
-          <h2>About</h2>
-          <div class="set-card"><div class="set-row"><span>Version</span><span class="set-note mono"><span id="appVersion">beta · 2026-10-20 15:23 · 2817424</span></span></div></div>
+        <div class="set-end">
+          <button type="button" class="link" id="sHowTo">How it works <span class="set-note">Views, quick add, file format, reminders</span> ›</button>
+          <span class="set-ver">Version <span class="mono"><span id="appVersion">beta · 2026-10-20 16:08 · 89b333e</span></span></span>
         </div>
       </form>
     </section>
