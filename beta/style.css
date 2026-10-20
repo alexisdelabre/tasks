@@ -836,8 +836,20 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
   body.l35.panel-open .app { padding-right: 0; }
   body.l35 .strip { overflow-x: hidden; }
   html body.has-rail .rail-grip { display: block; left: auto; right: calc(var(--rail-w) - 3px); z-index: 8; }
-  body.has-rail .rail { display: flex; flex-direction: column; gap: 12px; position: fixed; top: 0; bottom: 0; right: 0; width: var(--rail-w); overflow-y: auto; overflow-x: hidden; padding: 84px 12px 24px; background: var(--bg2); border-left: 1px solid var(--line); z-index: 4; scrollbar-width: thin; }
+  body.has-rail .rail { display: flex; flex-direction: column; gap: 12px; position: fixed; top: 0; bottom: 0; right: 0; width: var(--rail-w); overflow-y: auto; overflow-x: hidden; padding: 0 12px 24px; background: var(--bg2); border-left: 1px solid var(--line); border-top: 84px solid var(--bg2); z-index: 4; scrollbar-width: thin; }
+  /* The 84 px top is a border, not padding: a scroll box clips at its padding edge, so a scrolled widget never slides under the top buttons. */
+  /* A wide view: the rail is a 40 px strip and the content leaves room for it; open, the rail covers the content. */
+  body.rail-mini:not(.panel-open) .app { padding-right: 40px; }
+  body.rail-mini:not(.rail-peek) .rail { width: 40px; padding: 0; border-top: 0; }
+  html body.rail-mini:not(.rail-peek) .rail-grip { display: none; }
+  body.rail-peek .rail { z-index: 20; box-shadow: -10px 0 30px rgba(0, 0, 0, .1); }
+  html body.rail-peek .rail-grip { z-index: 21; }
 }
+.rail-strip { flex: 1; display: flex; justify-content: center; padding-top: 84px; color: var(--ink3); font-size: 18px; }
+.rail-strip:hover { color: var(--ink); background: var(--hov); }
+.wg-max { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 12.5px; color: var(--ink3); }
+.wg-max select { font: inherit; color: var(--ink); background: var(--bg2); border: 1px solid var(--bd); border-radius: 6px; padding: 1px 4px; }
+.nav .ico .done-ico { vertical-align: -3px; }
 .wg { background: var(--surf); border: 1px solid var(--bd); border-radius: var(--r); padding: 10px 14px 12px; position: relative; }
 .wg.folded { padding-bottom: 10px; }
 .wg header { display: flex; align-items: center; gap: 6px; min-height: 22px; }

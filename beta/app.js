@@ -21,19 +21,21 @@ const K = k => (DEMO ? 'demo.' : '') + CH + k;
 const LOCAL = ['localhost', '127.0.0.1'].includes(location.hostname);
 const MARK = BETA ? CHANNEL : LOCAL && !LS.get('nodev', false) && !LS.get('e2e', false) ? 'dev' : '';
 if (MARK) document.documentElement.dataset.channel = MARK;
-// Feature flags (story M6): one switch per flag in Settings › Beta features, kept per device, off by default.
+// Feature flags (story M6): one switch per flag in Settings › Beta features, kept per device, off by default (beta: true: on in beta and dev).
 // A flag is temporary: when the feature is kept or dropped, delete the flag. <html data-flags> lists the flags that are on, for CSS.
 const FLAGS = [
   // { id: 'L12', name: 'Calendar view', since: '2026-10-20' },
   { id: 'L30', name: 'Notes mark at the top right, with a peek', since: '2026-10-15' },
   { id: 'L23', name: 'Can start now, one task at a time', since: '2026-10-15' },
   { id: 'L34', name: 'Sidebar width: drag its edge', since: '2026-10-16' },
-  { id: 'L35', name: 'Centered column and widget rail', since: '2026-10-19' },
+  { id: 'L35', name: 'Centered column and widget rail', since: '2026-10-19', beta: true },
 ];
 // The test flag X0 exists only for e2e-channels.mjs: on localhost, with tasks.e2e set, so the frames never show it.
 if (location.hostname === 'localhost' && LS.get('e2e', false)) FLAGS.push({ id: 'X0', name: 'Test flag (local only)', since: '2026-10-15' });
 const flagState = LS.get('flags', {});
-const flagOn = id => FLAGS.some(f => f.id === id) && !!flagState[id];
+// A flag with beta: true starts on in a beta channel and on the dev server (MARK), off in stable and in a test browser
+// (navigator.webdriver, set by scripts/dev-up.sh); its switch still wins (2026-10-20).
+const flagOn = id => { const f = FLAGS.find(x => x.id === id); return !!f && !!(flagState[id] ?? (f.beta && MARK && !navigator.webdriver)); };
 const applyFlags = () => { document.documentElement.dataset.flags = FLAGS.filter(f => flagOn(f.id)).map(f => f.id.toLowerCase()).join(' '); };
 applyFlags();
 const st = {
@@ -242,6 +244,8 @@ const ICON = {
   stickies: '<path d="M5 4h14v10.5L13.5 20H5z"/><path d="M13.5 20v-5.5H19"/>', // a note with a folded corner (story L9)
   lists: '<rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/>',
 };
+// The Done entry of the sidebar: a 17 px check drawn like the other icons; the ✓ glyph read too small (2026-10-20).
+const doneIcon = '<svg class="done-ico" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m4.5 12.5 4.8 4.8L19.5 7"/></svg>';
 const svg = k => `<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${ICON[k]}</svg>`;
 const agendaIcon = (n = 24) => `<svg viewBox="0 0 24 24" width="${n}" height="${n}" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/><text x="12" y="18" text-anchor="middle" fill="currentColor" stroke="none" font-size="7.5" font-weight="700" font-family="-apple-system,system-ui,sans-serif">${+today().slice(8)}</text></svg>`;
 const VIEWS = [
@@ -916,7 +920,7 @@ function render() {
   nav += `<button class="add-task search-btn" data-act="search" title="Search tasks and lists (/ or ⌘K)"><span class="ico"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg></span>Search<kbd>⌘K</kbd></button>`;
   nav += VIEWS.map(v => `<button data-view="${v.id}" class="${st.view === v.id ? 'on' : ''}"><span class="ico">${v.id === 'stickies' ? '<span class="stk-ico"></span>' : v.ico || agendaIcon(17)}</span>${v.label}<span class="count ${v.id === 'agenda' && late ? 'late' : ''}">${counts[v.id] || ''}</span></button>`).join('');
   nav += `<div class="sep"></div>` + listsNav(lists, typeOf, countOf) + `<div class="sep"></div>`;
-  nav += `<button data-view="done" class="${st.view === 'done' ? 'on' : ''}"><span class="ico">✓</span>Done</button>`;
+  nav += `<button data-view="done" class="${st.view === 'done' ? 'on' : ''}"><span class="ico">${doneIcon}</span>Done</button>`;
   nav += `<button class="newlist" data-act="newlist"><span class="ico">+</span>New list</button>`;
   $('#nav').innerHTML = nav;
 
@@ -941,7 +945,7 @@ function render() {
     ['matrix', 'matrix', 'Matrix', 'var(--ink2)', counts.matrix],
   ].filter(Boolean);
   const listsPage = `<div class="tiles">${tiles.map(([v, ic, label, c, n]) => `<button class="tile${st.view === v ? ' on' : ''}" data-view="${esc(v)}" style="--c:${c}"><span class="tdot">${icon(TILE_ICON[ic], 16)}</span><span class="tn">${n}</span><span class="tl">${label}</span></button>`).join('')}</div>`
-    + listsNav(lists, typeOf, countOf, false) + `<div class="sep"></div><button data-view="done" class="${st.view === 'done' ? 'on' : ''}"><span class="ico">✓</span>Done</button><button data-act="newlist" class="newlist"><span class="ico">+</span>New list</button>`;
+    + listsNav(lists, typeOf, countOf, false) + `<div class="sep"></div><button data-view="done" class="${st.view === 'done' ? 'on' : ''}"><span class="ico">${doneIcon}</span>Done</button><button data-act="newlist" class="newlist"><span class="ico">+</span>New list</button>`;
 
   railCtx = { all, open, tasks, habits, td, doc, stockLists };
   // main
@@ -1952,20 +1956,35 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.se
 // (sidebar or rail) and two 20 px gutters, 836 px at most; below 640 px it keeps 640 px and moves right only as far as necessary, and the rail hides.
 // The widget rail is docked to the right edge, a mirror of the sidebar, and its left edge drags like the L34 edge (tasks.railWidth).
 // The column fits between the wider of the two bars on both sides: one set of widgets for the three views, kept in this browser (tasks.widgets). The task
-// panel covers the rail and does not move the column. Lists, projects, Matrix and Settings keep their layout and have no rail.
-const L35_VIEWS = ['agenda', 'habits', 'stickies'], L35_G = 20, L35_MIN = 640, L35_CAP = 836;
-let l35 = { on: false, rail: false }, railW = navSnap(+LS.get('railWidth', NAV_DEF) || NAV_DEF), railCtx = null, wEdit = false, wGal = false, wDrag = null;
-const wgs = Object.assign({ list: ['habits', 'cs', 'stock', 'chg', 'next', 'prog'], folded: ['next', 'prog'] }, LS.get('widgets', {}));
-const wSave = () => LS.set('widgets', { list: wgs.list, folded: wgs.folded });
+// panel covers the rail and does not move the column. Since 2026-10-20 every view has the column and the rail, except a wide view
+// (see l35Kind), which keeps its full width: the rail folds to a 40 px strip, and a click on it opens the rail over the content
+// until Esc or a click outside.
+const L35_G = 20, L35_MIN = 640, L35_CAP = 836;
+let l35 = { on: false, rail: false, mini: false }, railW = navSnap(+LS.get('railWidth', NAV_DEF) || NAV_DEF), railCtx = null, wEdit = false, wGal = false, wDrag = null, wPeek = false;
+const wgs = Object.assign({ list: ['habits', 'cs', 'stock', 'chg', 'next', 'prog'], folded: ['next', 'prog'], max: {} }, LS.get('widgets', {}));
+const wSave = () => LS.set('widgets', { list: wgs.list, folded: wgs.folded, max: wgs.max });
+const W_MAX = [3, 5, 8, 10, 15, 0]; // the « Show » choices of a widget with a row cap; 0 shows every row
+const wMax = (k, def) => wgs.max[k] ?? def;
 const rail = document.createElement('aside');
 Object.assign(rail, { id: 'rail', className: 'rail' });
 rail.setAttribute('aria-label', 'Widgets');
 document.body.append(rail);
+// The rail layout of the view: 'col' (centered column and rail), 'mini' (full width and the strip) or '' (no rail).
+// It follows the width rule of render(): a wide view (the Matrix page, a list in Board, Lanes or Matrix mode; a stock, habits or
+// stickies list keeps its own view) needs the full width and gets the strip. Settings, Help and the Lists page have no rail;
+// every other view gets the column and the rail (2026-10-20: « hide only when not needed, and when full width is required »).
+const wideView = v => v === 'matrix' || (v.startsWith('list:') && !['stock', 'habits', 'stickies'].includes(C.listTypeOf(currentDoc().sections.find(s => s.name === v.slice(5)))) && ['board', 'lanes', 'matrix'].includes(listMode(v.slice(5))));
+function l35Kind() {
+  if (['settings', 'help', 'lists'].includes(st.view)) return '';
+  return wideView(st.view) ? 'mini' : 'col';
+}
 function l35Apply() {
   const W = document.documentElement.clientWidth, side = $('#nav').getBoundingClientRect().width;
-  const on = flagOn('L35') && W >= 1100 && L35_VIEWS.includes(st.view);
+  const kind = flagOn('L35') && W >= 1100 ? l35Kind() : '', on = kind === 'col', mini = kind === 'mini';
   const was = l35.rail;
-  l35 = { on, rail: false };
+  l35 = { on, rail: mini, mini };
+  if (!mini) wPeek = false;
+  document.documentElement.style.setProperty('--rail-w', railW + 'px');
   if (on) {
     const sym = W - 2 * (Math.max(side, railW) + L35_G), fb = sym < L35_MIN; // the wider bar sets both gaps
     const colW = fb ? Math.min(L35_MIN, W - side - 2 * L35_G) : Math.min(L35_CAP, sym);
@@ -1973,12 +1992,17 @@ function l35Apply() {
     l35.rail = !fb;
     const r = document.documentElement.style;
     r.setProperty('--l35-w', colW + 'px'); r.setProperty('--l35-ml', left - side + 'px');
-    r.setProperty('--rail-w', railW + 'px');
   }
   document.body.classList.toggle('l35', on);
   document.body.classList.toggle('has-rail', l35.rail);
-  return was !== l35.rail;
+  document.body.classList.toggle('rail-mini', mini);
+  document.body.classList.toggle('rail-peek', wPeek);
+  return was !== l35.rail || (mini && !rail.childElementCount);
 }
+const railPeek = v => { wPeek = v; document.body.classList.toggle('rail-peek', v); if (!v) { wEdit = false; wGal = false; } paintRail(); };
+// The open rail over a wide view closes on Esc or on a click outside it (not on the strip, the panel or a dialog).
+document.addEventListener('click', e => { if (wPeek && e.target.isConnected && !e.target.closest('#rail, #railGrip, dialog')) railPeek(false); });
+document.addEventListener('keydown', e => { if (wPeek && e.key === 'Escape' && !sheet.open && !pal.open) { e.stopImmediatePropagation(); railPeek(false); } }, true);
 // The observer also sees the scrollbar come and go (the window keeps its size, the page loses 15 px), so the center stays exact.
 // With the flag on, every resize renders again: the day strip refits to the column.
 new ResizeObserver(() => { if (l35Apply() || l35.on) render(); }).observe(document.documentElement);
@@ -2030,8 +2054,9 @@ const W_ALL = {
   } },
   cs: { n: 'Can start now', src: 'L23 · L32', d: 'The tasks you can start now, soonest act-by first.', t: c => {
     const rows = csSort(c.tasks.filter(canStart));
-    if (!rows.length) return { h: 'Can start now', b: '<p class="wg-empty">Nothing to start now.</p>' };
-    return { h: `Can start now · ${rows.length}`, link: ['cspage', `All ${rows.length} ›`], b: rows.slice(0, 5).map(x => { const j = daysTo(csDay(x), c.td); return wRow(x, `<span class="wg-j${j <= 7 ? ' soon' : ''}">J-${j}</span>`); }).join('') };
+    const max = wMax('cs', 5);
+    if (!rows.length) return { h: 'Can start now', max, b: '<p class="wg-empty">Nothing to start now.</p>' };
+    return { h: `Can start now · ${rows.length}`, max, link: ['cspage', `All ${rows.length} ›`], b: rows.slice(0, max || rows.length).map(x => { const j = daysTo(csDay(x), c.td); return wRow(x, `<span class="wg-j${j <= 7 ? ' soon' : ''}">J-${j}</span>`); }).join('') };
   } },
   stock: { n: 'To buy', src: 'stock lists', d: 'The open items of the stock lists. A tap checks one as bought.', t: c => {
     const rows = c.open.filter(x => c.stockLists.includes(x.list));
@@ -2096,11 +2121,14 @@ function chgRows() {
 // borders, « + Add widget » (the gallery) and « Done ». A title tap folds a widget to one line in both modes.
 function paintRail() {
   if (!l35.rail || !railCtx) { rail.innerHTML = ''; return; }
+  if (l35.mini && !wPeek) { rail.classList.remove('editing'); rail.innerHTML = `<button class="rail-strip" data-w="peek" title="Show the widgets" aria-label="Show the widgets" aria-expanded="false"><span>‹</span></button>`; return; }
   const ws = wgs.list.filter(k => W_ALL[k]).map((k, i, a) => {
     const w = W_ALL[k].t(railCtx), f = wgs.folded.includes(k);
     const link = w.link ? (w.link[0].startsWith('view:') ? `<button class="wg-link" data-view="${esc(w.link[0].slice(5))}">${w.link[1]}</button>` : `<button class="wg-link" data-act="${w.link[0]}">${w.link[1]}</button>`) : '';
     const ctl = wEdit ? `<span class="wg-ctl"><span class="wg-grip" title="Drag to move">⠿</span><button data-w="up" data-k="${k}" aria-label="Move up"${i ? '' : ' disabled'}>↑</button><button data-w="dn" data-k="${k}" aria-label="Move down"${i < a.length - 1 ? '' : ' disabled'}>↓</button><button class="wg-rm" data-w="rm" data-k="${k}" aria-label="Remove ${esc(W_ALL[k].n)}">×</button></span>` : link;
-    return `<section class="wg${f ? ' folded' : ''}" data-k="${k}"${wEdit ? ' draggable="true"' : ''}><header><button class="wg-h" data-w="fold" data-k="${k}" aria-expanded="${!f}">${esc(w.h)}</button>${ctl}</header>${f ? '' : `<div class="wg-b">${w.b}</div>`}</section>`;
+    // A widget with a row cap (w.max) shows its « Show » picker in edit mode, above its rows.
+    const max = wEdit && 'max' in w ? `<label class="wg-max">Show <select data-w="max" data-k="${k}">${W_MAX.map(n => `<option value="${n}"${n === w.max ? ' selected' : ''}>${n || 'All'}</option>`).join('')}</select></label>` : '';
+    return `<section class="wg${f ? ' folded' : ''}" data-k="${k}"${wEdit ? ' draggable="true"' : ''}><header><button class="wg-h" data-w="fold" data-k="${k}" aria-expanded="${!f}">${esc(w.h)}</button>${ctl}</header>${f ? '' : `${max}<div class="wg-b">${w.b}</div>`}</section>`;
   }).join('');
   const free = Object.keys(W_ALL).filter(k => !wgs.list.includes(k));
   const gal = wGal ? `<div class="wg-gal"><div class="wg-galh">Add a widget<button data-w="gal" aria-label="Close">×</button></div>${free.map(k => `<button data-w="add" data-k="${k}"><b>${esc(W_ALL[k].n)} <span>${esc(W_ALL[k].src)}</span></b><small>${esc(W_ALL[k].d)}</small></button>`).join('') || '<small>Every widget is in the rail.</small>'}</div>` : '';
@@ -2112,6 +2140,8 @@ function paintRail() {
 function wMove(k, to) { const a = wgs.list.filter(x => x !== k); a.splice(Math.max(0, Math.min(a.length, to)), 0, k); wgs.list = a; }
 rail.addEventListener('click', e => {
   const w = e.target.closest('[data-w]');
+  if (w?.dataset.w === 'max') return; // the « Show » picker saves on change
+  if (w?.dataset.w === 'peek') return railPeek(true);
   if (w) {
     const k = w.dataset.k, i = wgs.list.indexOf(k), was = wgs.list.join();
     ({ up: () => wMove(k, i - 1), dn: () => wMove(k, i + 1), rm: () => { wgs.list = wgs.list.filter(x => x !== k); },
@@ -2130,6 +2160,7 @@ rail.addEventListener('click', e => {
   if (a === 'hopen') return setView('habits');
   if (a === 'cspage') return openPage('canstart');
 });
+rail.addEventListener('change', e => { const s = e.target.closest('[data-w="max"]'); if (s) { wgs.max[s.dataset.k] = +s.value; wSave(); paintRail(); } });
 rail.addEventListener('dragstart', e => { const s = e.target.closest?.('.wg'); if (!wEdit || !s) return; wDrag = s.dataset.k; s.classList.add('drag'); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', wDrag); });
 const wClear = () => rail.querySelectorAll('.drop-a, .drop-b').forEach(x => x.classList.remove('drop-a', 'drop-b'));
 rail.addEventListener('dragover', e => {
