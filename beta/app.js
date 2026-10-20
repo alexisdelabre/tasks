@@ -28,6 +28,7 @@ const FLAGS = [
   { id: 'L30', name: 'Notes mark at the top right, with a peek', since: '2026-10-15' },
   { id: 'L23', name: 'Can start now, one task at a time', since: '2026-10-15' },
   { id: 'L34', name: 'Sidebar width: drag its edge', since: '2026-10-16' },
+  { id: 'L35', name: 'Centered column and widget rail', since: '2026-10-19' },
 ];
 // The test flag X0 exists only for e2e-channels.mjs: on localhost, with tasks.e2e set, so the frames never show it.
 if (location.hostname === 'localhost' && LS.get('e2e', false)) FLAGS.push({ id: 'X0', name: 'Test flag (local only)', since: '2026-10-15' });
@@ -828,7 +829,10 @@ function agendaHTML(tasks, habitsDay, td) {
   let html = horizonHTML(tasks.filter(x => (window.__stickies || []).includes(x.list)), td, currentDoc().sections.filter(s => s.project));
   const cs = flagOn('L23') && a === td && b ? csSort(tasks.filter(canStart)) : [];
   csLast = { rows: cs, td };
-  html += a === td ? (cs.length ? canStartZone(habitsDay, cs, td) : habitZone(habitsDay)) : ''; // a short zone: the agenda keeps its room for the tasks
+  // L35: a widget of the rail takes its part out of this zone (Habits now, Can start now).
+  const inRail = k => l35.rail && wgs.list.includes(k);
+  const zone = cs.length && !inRail('cs') ? (inRail('habits') ? `<div class="cs-split solo">${canStartHTML(cs, td)}</div>` : canStartZone(habitsDay, cs, td)) : inRail('habits') ? '' : habitZone(habitsDay);
+  html += a === td ? zone : ''; // a short zone: the agenda keeps its room for the tasks
   html += group('Overdue', overdue, { late: true });
   let title, sub;
   if (r.id === 'all') {
@@ -853,7 +857,7 @@ function agendaHTML(tasks, habitsDay, td) {
 function stripHTML(tasks, td) {
   const [a, b0] = rangeSpan(st.range, td), b = b0 || '9999-12-31';
   let h = '';
-  for (let i = 0; i < STRIP_DAYS; i++) {
+  for (let i = 0; i < (l35.on ? 42 : STRIP_DAYS); i++) { // L35: up to six weeks, fitStrip() keeps the days that fit
     const d = C.addDays(td, i), n = tasks.filter(x => dueOf(x) === d).length;
     const cs = flagOn('L23') && i ? tasks.filter(x => canStart(x) && csDay(x) === d).length : 0; // L23: to start now, act by that day
     const cls = d === a || d === b ? 'end' : d > a && d < b ? 'in' : '';
@@ -863,6 +867,13 @@ function stripHTML(tasks, td) {
   const tip = st.anchor ? `From ${shortDate(st.anchor)}: tap the last day.` : 'Tap a day, then another day for a range.';
   return `<div class="strip">${h}</div><div class="strip-tip">${esc(tip)}</div>`;
 }
+// L35: the strip fills the width of the centered column with whole days, and changes with it.
+function fitStrip() {
+  const s = $('#dayStrip .strip');
+  if (!l35.on || !s) return;
+  const r = s.getBoundingClientRect().right;
+  for (let b = s.lastElementChild; b && b.getBoundingClientRect().right > r + .5; b = s.lastElementChild) b.remove();
+}
 function setRange(id) {
   if (st.view !== 'agenda') { st.view = 'agenda'; LS.set('view', 'agenda'); window.scrollTo(0, 0); }
   st.range = { id }; st.anchor = null; render(); window.scrollTo(0, 0);
@@ -870,6 +881,7 @@ function setRange(id) {
 
 function render() {
   if (hashRetry && currentDoc().sections.length) { hashRetry = false; readHash(); }
+  l35Apply();
   const doc = currentDoc();
   const all = C.allTasks(doc);
   const open = all.filter(x => !x.task.checked).sort(C.sortTasksAt());
@@ -931,6 +943,7 @@ function render() {
   const listsPage = `<div class="tiles">${tiles.map(([v, ic, label, c, n]) => `<button class="tile${st.view === v ? ' on' : ''}" data-view="${esc(v)}" style="--c:${c}"><span class="tdot">${icon(TILE_ICON[ic], 16)}</span><span class="tn">${n}</span><span class="tl">${label}</span></button>`).join('')}</div>`
     + listsNav(lists, typeOf, countOf, false) + `<div class="sep"></div><button data-view="done" class="${st.view === 'done' ? 'on' : ''}"><span class="ico">✓</span>Done</button><button data-act="newlist" class="newlist"><span class="ico">+</span>New list</button>`;
 
+  railCtx = { all, open, tasks, habits, td, doc, stockLists };
   // main
   let html = '', title = '', sub = '', tools = '', wide = false;
   const v = st.view;
@@ -999,6 +1012,7 @@ function render() {
   $('#viewTools').innerHTML = tools;
   $('#dayStrip').innerHTML = strip;
   $('#dayStrip').hidden = !strip;
+  fitStrip();
   document.querySelector('main').classList.toggle('wide', wide);
   // List views center the title and the view switch: main stays centered at every width, so they keep their place when the view changes.
   document.querySelector('main').classList.toggle('centered', st.view.startsWith('list:'));
@@ -1013,6 +1027,7 @@ function render() {
   $('#settingsBtn').classList.toggle('on', v === 'settings');
   document.title = `Tasks${MARK ? ' · ' + MARK : ''}${counts.agenda ? ` (${counts.agenda})` : ''}`;
   updatePreview();
+  paintRail();
   if (!v.startsWith('list:')) st.optList = null;
   paintViewOpts();
   layoutHorizon();
@@ -1931,6 +1946,204 @@ setInterval(() => {
 }, 30_000);
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
+
+// Story L35 (flag L35, round 3 choice W2, 2026-10-19): on a computer, the column of Agenda, Habits and Stickies sits at the center
+// of the window, not at the center of the space right of the sidebar. Its width is the window minus two widths of the wider bar
+// (sidebar or rail) and two 20 px gutters, 836 px at most; below 640 px it keeps 640 px and moves right only as far as necessary, and the rail hides.
+// The widget rail is docked to the right edge, a mirror of the sidebar, and its left edge drags like the L34 edge (tasks.railWidth).
+// The column fits between the wider of the two bars on both sides: one set of widgets for the three views, kept in this browser (tasks.widgets). The task
+// panel covers the rail and does not move the column. Lists, projects, Matrix and Settings keep their layout and have no rail.
+const L35_VIEWS = ['agenda', 'habits', 'stickies'], L35_G = 20, L35_MIN = 640, L35_CAP = 836;
+let l35 = { on: false, rail: false }, railW = navSnap(+LS.get('railWidth', NAV_DEF) || NAV_DEF), railCtx = null, wEdit = false, wGal = false, wDrag = null;
+const wgs = Object.assign({ list: ['habits', 'cs', 'stock', 'chg', 'next', 'prog'], folded: ['next', 'prog'] }, LS.get('widgets', {}));
+const wSave = () => LS.set('widgets', { list: wgs.list, folded: wgs.folded });
+const rail = document.createElement('aside');
+Object.assign(rail, { id: 'rail', className: 'rail' });
+rail.setAttribute('aria-label', 'Widgets');
+document.body.append(rail);
+function l35Apply() {
+  const W = document.documentElement.clientWidth, side = $('#nav').getBoundingClientRect().width;
+  const on = flagOn('L35') && W >= 1100 && L35_VIEWS.includes(st.view);
+  const was = l35.rail;
+  l35 = { on, rail: false };
+  if (on) {
+    const sym = W - 2 * (Math.max(side, railW) + L35_G), fb = sym < L35_MIN; // the wider bar sets both gaps
+    const colW = fb ? Math.min(L35_MIN, W - side - 2 * L35_G) : Math.min(L35_CAP, sym);
+    const left = fb ? side + L35_G : (W - colW) / 2;
+    l35.rail = !fb;
+    const r = document.documentElement.style;
+    r.setProperty('--l35-w', colW + 'px'); r.setProperty('--l35-ml', left - side + 'px');
+    r.setProperty('--rail-w', railW + 'px');
+  }
+  document.body.classList.toggle('l35', on);
+  document.body.classList.toggle('has-rail', l35.rail);
+  return was !== l35.rail;
+}
+// The observer also sees the scrollbar come and go (the window keeps its size, the page loses 15 px), so the center stays exact.
+// With the flag on, every resize renders again: the day strip refits to the column.
+new ResizeObserver(() => { if (l35Apply() || l35.on) render(); }).observe(document.documentElement);
+// The rail edge: the same steps, limits, pill, double-click and keys as the sidebar edge (L34), mirrored.
+let rgTimer = null;
+const rgrip = document.createElement('div');
+Object.assign(rgrip, { className: 'nav-grip rail-grip', id: 'railGrip', tabIndex: 0, title: `Drag to change the width · double-click: ${NAV_DEF} px` });
+for (const [k, v] of [['role', 'separator'], ['aria-orientation', 'vertical'], ['aria-label', 'Widget rail width'], ['aria-valuemin', NAV_MIN], ['aria-valuemax', NAV_MAX]]) rgrip.setAttribute(k, v);
+rgrip.innerHTML = '<span class="ng-val" hidden></span>';
+document.body.append(rgrip);
+const rgVal = rgrip.firstChild;
+function setRailW(w, show = true, y = null) {
+  const room = (document.documentElement.clientWidth - L35_MIN) / 2 - L35_G; // a drag stops where the column keeps 640 px
+  railW = navSnap(w);
+  while (railW > NAV_MIN && railW > room) railW -= NAV_STEP;
+  rgrip.setAttribute('aria-valuenow', railW);
+  LS.set('railWidth', railW);
+  if (l35Apply() || l35.on) render();
+  if (show) {
+    rgVal.textContent = railW + ' px';
+    if (y !== null) rgrip.style.setProperty('--gy', Math.max(24, Math.min(innerHeight - 24, y)) + 'px');
+    rgVal.hidden = false; rgVal.classList.remove('out'); clearTimeout(rgTimer);
+    if (!rgrip.classList.contains('drag')) rgTimer = setTimeout(() => { rgVal.classList.add('out'); rgTimer = setTimeout(() => { rgVal.hidden = true; rgVal.classList.remove('out'); }, 300); }, NAV_SHOW);
+  }
+  layoutHorizon();
+}
+const rgX = e => document.documentElement.clientWidth - e.clientX;
+rgrip.addEventListener('pointerdown', e => { if (e.button) return; e.preventDefault(); rgrip.setPointerCapture(e.pointerId); rgrip.classList.add('drag'); document.body.classList.add('resizing'); setRailW(rgX(e), true, e.clientY); });
+rgrip.addEventListener('pointermove', e => { if (rgrip.classList.contains('drag')) setRailW(rgX(e), true, e.clientY); });
+const rgEnd = e => { if (!rgrip.classList.contains('drag')) return; rgrip.classList.remove('drag'); document.body.classList.remove('resizing'); setRailW(railW, true, e.clientY); };
+rgrip.addEventListener('pointerup', rgEnd);
+rgrip.addEventListener('pointercancel', rgEnd);
+rgrip.addEventListener('dblclick', e => setRailW(NAV_DEF, true, e.clientY));
+rgrip.addEventListener('keydown', e => {
+  const d = { ArrowLeft: NAV_STEP, ArrowRight: -NAV_STEP }[e.key];
+  if (d) { e.preventDefault(); setRailW(railW + d); }
+  else if (e.key === 'Home' || e.key === 'End') { e.preventDefault(); setRailW(e.key === 'Home' ? NAV_MIN : NAV_MAX); }
+});
+
+// The widgets. Each gives a title, an optional link and its body; t(ctx) reads the data of the last render.
+const wRow = (x, right = '') => `<button class="wg-row" data-open="${x.task.id}"><span class="dot" style="background:${listColor(x.list)}"></span><span class="wg-x">${esc(x.task.title)}</span>${right}</button>`;
+const W_ALL = {
+  habits: { n: 'Habits now', src: 'L23', d: 'The habits of the next hours. A tap checks one.', t: c => {
+    const day = c.habits.filter(x => C.habitDue(x.task, c.td) <= c.td || C.habitLog(x.task).includes(c.td));
+    if (!day.length) return { h: 'Habits', b: '<p class="wg-empty">No habit today.</p>' };
+    const { done, show, later } = habitParts(day), left = show.filter(x => !done(x)).length;
+    const dots = [...show.filter(x => !done(x)), ...show.filter(done)].map(x => `<button class="wg-hab${done(x) ? ' done' : ''}" data-act="hcheck" data-id="${x.task.id}" title="${esc(x.task.title)}">${esc(habitEmoji(x.task.title))}</button>`).join('');
+    return { h: `Habits now · ${left ? left + ' left' : '✓'}`, link: ['hopen', later.length ? `+${later.length} ›` : '›'], b: dots ? `<div class="wg-habs">${dots}</div>` : `<p class="wg-empty">${later.length} later today.</p>` };
+  } },
+  cs: { n: 'Can start now', src: 'L23 · L32', d: 'The tasks you can start now, soonest act-by first.', t: c => {
+    const rows = csSort(c.tasks.filter(canStart));
+    if (!rows.length) return { h: 'Can start now', b: '<p class="wg-empty">Nothing to start now.</p>' };
+    return { h: `Can start now · ${rows.length}`, link: ['cspage', `All ${rows.length} ›`], b: rows.slice(0, 5).map(x => { const j = daysTo(csDay(x), c.td); return wRow(x, `<span class="wg-j${j <= 7 ? ' soon' : ''}">J-${j}</span>`); }).join('') };
+  } },
+  stock: { n: 'To buy', src: 'stock lists', d: 'The open items of the stock lists. A tap checks one as bought.', t: c => {
+    const rows = c.open.filter(x => c.stockLists.includes(x.list));
+    const l = rows[0]?.list || c.stockLists[0];
+    if (!rows.length) return { h: 'To buy', b: '<p class="wg-empty">Nothing to buy.</p>' };
+    return { h: `To buy · ${rows.length}`, link: l ? ['view:list:' + l, '›'] : null, b: rows.slice(0, 8).map(x => `<button class="wg-row" data-act="wbuy" data-id="${x.task.id}"><span class="wg-box"></span><span class="wg-x">${esc(x.task.title)}</span><span class="wg-j">${esc(x.list)}</span></button>`).join('') };
+  } },
+  chg: { n: 'Recent changes', src: 'L28', d: 'The last writes to Tasks.md: the app, Claude (MCP), the CLI, the reminder job.', t: () => {
+    const rows = chgRows();
+    return { h: 'Recent changes', b: rows === null ? '<p class="wg-empty">Loading…</p>' : !rows.length ? '<p class="wg-empty">No change yet.</p>'
+      : `<div class="wg-chg">${rows.map(r => `<span class="wg-who src-${r.who.toLowerCase()}">${esc(r.who)}</span><span class="wg-x" title="${esc(r.msg)}">${esc(r.msg)}</span><span class="wg-tm">${esc(r.when)}</span>`).join('')}</div>${DEMO ? '<p class="wg-note">Examples: the demo has no git history.</p>' : ''}` };
+  } },
+  next: { n: 'Next up', src: 'reminders', d: 'The tasks and habits of today with a time, the next one first.', t: c => {
+    const now = C.nowTimeIn();
+    const rows = [...c.tasks.filter(x => dueOf(x) === c.td && x.task.at), ...c.habits.filter(x => x.task.at && C.habitDue(x.task, c.td) <= c.td && !C.habitLog(x.task).includes(c.td))].sort((a, b) => a.task.at.localeCompare(b.task.at));
+    if (!rows.length) return { h: 'Next up', b: '<p class="wg-empty">No timed item today.</p>' };
+    const i = rows.findIndex(x => x.task.at >= now);
+    return { h: 'Next up', b: rows.map((x, k) => wRow(x, `<span class="wg-tm${k === i ? ' now' : ''}${x.task.at < now ? ' past' : ''}">${esc(x.task.at)}</span>`)).join('') };
+  } },
+  prog: { n: 'Today progress', src: 'new', d: 'Done today against the plan, in tasks and estimated time.', t: c => {
+    const done = c.all.filter(x => x.task.checked && x.task.done === c.td && !c.stockLists.includes(x.list) && !(window.__habits || []).includes(x.list));
+    const left = c.tasks.filter(x => dueOf(x) && dueOf(x) <= c.td);
+    const n = done.length + left.length, p = n ? Math.round(done.length / n * 100) : 0;
+    const est = rs => rs.reduce((a, x) => a + (x.task.est || 0), 0), e1 = est(done), e2 = est(done) + est(left);
+    return { h: 'Today', b: `<div class="wg-prog"><span class="wg-ring" style="--p:${p}"></span><span><b>${done.length} of ${n} done</b><small>${e2 ? `${C.estLabel(e1 || 0)} of ${C.estLabel(e2)} estimated` : 'No estimate'}</small></span></div>` };
+  } },
+  inbox: { n: 'Inbox to sort', src: 'Inbox', d: 'The Inbox tasks that wait for a list, a date or a priority.', t: c => {
+    const rows = c.tasks.filter(x => x.list.toLowerCase() === 'inbox');
+    return { h: `Inbox · ${rows.length}`, link: ['view:list:Inbox', '›'], b: rows.length ? rows.slice(0, 5).map(x => wRow(x)).join('') : '<p class="wg-empty">Inbox is empty.</p>' };
+  } },
+  proj: { n: 'Projects', src: 'L10', d: 'Each deadline project: days left, steps done, estimated time left.', t: c => {
+    const ps = c.doc.sections.filter(s => s.project);
+    if (!ps.length) return { h: 'Projects', b: '<p class="wg-empty">No project yet.</p>' };
+    return { h: 'Projects', b: ps.map(s => {
+      const rs = c.all.filter(x => x.list === s.name), d = rs.filter(x => x.task.checked).length, est = rs.filter(x => !x.task.checked).reduce((a, x) => a + (x.task.est || 0), 0);
+      return `<button class="wg-proj" data-view="list:${esc(s.name)}" style="--pc:${listColor(s.name)}"><span class="wg-pr"><span class="dot"></span><span class="wg-x">${esc(s.name)}</span><span class="wg-j">${s.by ? 'J-' + daysTo(s.by, c.td) : 'no date'}</span></span><span class="wg-pb"><i style="width:${rs.length ? d / rs.length * 100 : 0}%"></i></span><span class="wg-pm"><span>${d}/${rs.length} done</span><span>${est ? C.estLabel(est) + ' left' : ''}</span></span></button>`;
+    }).join('') };
+  } },
+};
+// Recent changes: the last commits of the data file, read from GitHub once a minute. The commit message carries its source.
+let chgCache = { at: 0, rows: null };
+const CHG_DEMO = [['MCP', 'added 3 tasks to Work', '10:42'], ['App', 'done « Water the plants »', '09:15'], ['MCP', 'Buy socks: act by moved to J-3', '08:30'], ['Job', 'sent 2 reminders', '08:00']];
+function chgRows() {
+  if (DEMO) return CHG_DEMO.map(([who, msg, when]) => ({ who, msg, when }));
+  if (Date.now() - chgCache.at > 60e3) {
+    chgCache.at = Date.now();
+    fetch(`${API}/repos/${cfg.repo}/commits?path=${encodeURIComponent(cfg.path)}&sha=${encodeURIComponent(cfg.branch)}&per_page=6`, { headers: headers() })
+      .then(r => r.ok ? r.json() : []).then(cs => {
+        const td = today();
+        chgCache.rows = cs.map(k => {
+          const m = k.commit.message.split('\n')[0], src = (m.match(/\((MCP|CLI|app|App|job|Job)\)/) || [])[1] || 'Git';
+          const d = new Date(k.commit.author.date), day = d.toLocaleDateString('en-CA', { timeZone: 'Europe/Paris' });
+          const when = day === td ? d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' }) : shortDate(day);
+          return { who: src[0].toUpperCase() + src.slice(1).toLowerCase(), msg: m.replace(/^[^:]*:\s*/, ''), when };
+        });
+        paintRail();
+      }).catch(() => { chgCache.rows = []; paintRail(); });
+  }
+  return chgCache.rows;
+}
+// The rail. W2: a quiet « Edit widgets » button under the last widget; edit mode shows the controls on every widget, dashed
+// borders, « + Add widget » (the gallery) and « Done ». A title tap folds a widget to one line in both modes.
+function paintRail() {
+  if (!l35.rail || !railCtx) { rail.innerHTML = ''; return; }
+  const ws = wgs.list.filter(k => W_ALL[k]).map((k, i, a) => {
+    const w = W_ALL[k].t(railCtx), f = wgs.folded.includes(k);
+    const link = w.link ? (w.link[0].startsWith('view:') ? `<button class="wg-link" data-view="${esc(w.link[0].slice(5))}">${w.link[1]}</button>` : `<button class="wg-link" data-act="${w.link[0]}">${w.link[1]}</button>`) : '';
+    const ctl = wEdit ? `<span class="wg-ctl"><span class="wg-grip" title="Drag to move">⠿</span><button data-w="up" data-k="${k}" aria-label="Move up"${i ? '' : ' disabled'}>↑</button><button data-w="dn" data-k="${k}" aria-label="Move down"${i < a.length - 1 ? '' : ' disabled'}>↓</button><button class="wg-rm" data-w="rm" data-k="${k}" aria-label="Remove ${esc(W_ALL[k].n)}">×</button></span>` : link;
+    return `<section class="wg${f ? ' folded' : ''}" data-k="${k}"${wEdit ? ' draggable="true"' : ''}><header><button class="wg-h" data-w="fold" data-k="${k}" aria-expanded="${!f}">${esc(w.h)}</button>${ctl}</header>${f ? '' : `<div class="wg-b">${w.b}</div>`}</section>`;
+  }).join('');
+  const free = Object.keys(W_ALL).filter(k => !wgs.list.includes(k));
+  const gal = wGal ? `<div class="wg-gal"><div class="wg-galh">Add a widget<button data-w="gal" aria-label="Close">×</button></div>${free.map(k => `<button data-w="add" data-k="${k}"><b>${esc(W_ALL[k].n)} <span>${esc(W_ALL[k].src)}</span></b><small>${esc(W_ALL[k].d)}</small></button>`).join('') || '<small>Every widget is in the rail.</small>'}</div>` : '';
+  const foot = wEdit ? `<div class="wg-foot"><button class="wg-add" data-w="gal">+ Add widget</button><button class="wg-done" data-w="edit">Done</button></div>` : `<button class="wg-edit" data-w="edit">✎ Edit widgets</button>`;
+  rail.classList.toggle('editing', wEdit);
+  rail.innerHTML = ws + foot + gal;
+  if (wGal) rail.querySelector('.wg-gal').scrollIntoView({ block: 'nearest' });
+}
+function wMove(k, to) { const a = wgs.list.filter(x => x !== k); a.splice(Math.max(0, Math.min(a.length, to)), 0, k); wgs.list = a; }
+rail.addEventListener('click', e => {
+  const w = e.target.closest('[data-w]');
+  if (w) {
+    const k = w.dataset.k, i = wgs.list.indexOf(k), was = wgs.list.join();
+    ({ up: () => wMove(k, i - 1), dn: () => wMove(k, i + 1), rm: () => { wgs.list = wgs.list.filter(x => x !== k); },
+       fold: () => { wgs.folded = wgs.folded.includes(k) ? wgs.folded.filter(x => x !== k) : [...wgs.folded, k]; },
+       add: () => { wgs.list = [...wgs.list, k]; wGal = false; }, gal: () => { wGal = !wGal; },
+       edit: () => { wEdit = !wEdit; wGal = false; } })[w.dataset.w]?.();
+    wSave();
+    return wgs.list.join() !== was ? render() : paintRail(); // the Agenda zone changes when Habits now or Can start now moves in or out
+  }
+  const v = e.target.closest('[data-view]')?.dataset.view;
+  if (v) return setView(v);
+  const o = e.target.closest('[data-open]')?.dataset.open;
+  if (o) return openTask(o);
+  const act = e.target.closest('[data-act]'), a = act?.dataset.act;
+  if (a === 'hcheck' || a === 'wbuy') return toggle(act.dataset.id, null);
+  if (a === 'hopen') return setView('habits');
+  if (a === 'cspage') return openPage('canstart');
+});
+rail.addEventListener('dragstart', e => { const s = e.target.closest?.('.wg'); if (!wEdit || !s) return; wDrag = s.dataset.k; s.classList.add('drag'); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', wDrag); });
+const wClear = () => rail.querySelectorAll('.drop-a, .drop-b').forEach(x => x.classList.remove('drop-a', 'drop-b'));
+rail.addEventListener('dragover', e => {
+  const s = e.target.closest?.('.wg'); if (!wDrag || !s) return;
+  e.preventDefault(); wClear();
+  if (s.dataset.k !== wDrag) { const r = s.getBoundingClientRect(); s.classList.add(e.clientY < r.top + r.height / 2 ? 'drop-b' : 'drop-a'); }
+});
+rail.addEventListener('drop', e => {
+  const s = e.target.closest?.('.wg'); if (!wDrag || !s) return;
+  e.preventDefault();
+  if (s.dataset.k !== wDrag) { const a = wgs.list.filter(x => x !== wDrag); a.splice(a.indexOf(s.dataset.k) + (s.classList.contains('drop-a') ? 1 : 0), 0, wDrag); wgs.list = a; wSave(); }
+  wDrag = null; render();
+});
+rail.addEventListener('dragend', () => { wDrag = null; wClear(); rail.querySelectorAll('.drag').forEach(x => x.classList.remove('drag')); });
 
 readHash();
 if (DEMO) { $('#demoBar').hidden = false; setStatus('off'); loadDemo().then(render); }

@@ -819,9 +819,84 @@ html[data-create="hide"] .newlist, html[data-create="hide"] .nplus, html[data-cr
 .nav-grip:hover::after, .nav-grip.drag::after, .nav-grip:focus-visible::after { background: var(--accent); }
 .ng-val { position: absolute; left: 14px; top: var(--gy, 50%); transform: translateY(-50%); padding: 4px 8px; border-radius: 8px; background: var(--ink); color: var(--bg); font: 600 12px var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; pointer-events: none; box-shadow: var(--shadow); transition: opacity .3s; }
 .ng-val.out { opacity: 0; }
+.rail-grip .ng-val { left: auto; right: 14px; }
 .ng-val[hidden] { display: none; }
 body.resizing, body.resizing * { cursor: col-resize !important; user-select: none; }
 @media (min-width: 761px) {
   html[data-flags~="l34"] .app { grid-template-columns: var(--nav-w, 264px) 1fr; }
   html[data-flags~="l34"] .nav-grip { display: block; }
 }
+
+/* Story L35 (flag L35): the column of Agenda, Habits and Stickies at the center of the window (app.js sets the sizes), and the
+   widget rail in the right gap. The task panel covers the rail and leaves the column in place. W2: a quiet « Edit widgets » button
+   under the last widget; edit mode gives dashed borders, the controls, « + Add widget » and « Done ». */
+.rail, html[data-flags] .rail-grip { display: none; }
+@media (min-width: 1100px) {
+  body.l35 main { max-width: none; width: var(--l35-w); margin: 0 0 0 var(--l35-ml); }
+  body.l35.panel-open .app { padding-right: 0; }
+  body.l35 .strip { overflow-x: hidden; }
+  html body.has-rail .rail-grip { display: block; left: auto; right: calc(var(--rail-w) - 3px); z-index: 8; }
+  body.has-rail .rail { display: flex; flex-direction: column; gap: 12px; position: fixed; top: 0; bottom: 0; right: 0; width: var(--rail-w); overflow-y: auto; overflow-x: hidden; padding: 84px 12px 24px; background: var(--bg2); border-left: 1px solid var(--line); z-index: 4; scrollbar-width: thin; }
+}
+.wg { background: var(--surf); border: 1px solid var(--bd); border-radius: var(--r); padding: 10px 14px 12px; position: relative; }
+.wg.folded { padding-bottom: 10px; }
+.wg header { display: flex; align-items: center; gap: 6px; min-height: 22px; }
+.wg-h { flex: 1; min-width: 0; text-align: left; font-size: 11px; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; color: var(--ink3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wg-h:hover { color: var(--ink2); }
+.wg-link { font-size: 12.5px; color: var(--accent); padding: 0 2px; }
+.wg-b { margin-top: 8px; display: flex; flex-direction: column; gap: 2px; }
+.wg-row { display: flex; align-items: center; gap: 8px; padding: 4px 4px; margin: 0 -4px; border-radius: 7px; font-size: 13.5px; text-align: left; min-width: 0; }
+.wg-row:hover { background: var(--hov); }
+.wg-row .dot { width: 8px; height: 8px; border-radius: 3px; flex: none; }
+.wg-x { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wg-j, .wg-tm { font: 600 11.5px var(--mono); color: var(--ink2); flex: none; }
+.wg-j.soon { color: var(--amber); }
+.wg-tm.now { color: var(--accent); }
+.wg-tm.past { color: var(--ink3); font-weight: 400; }
+.wg-box { width: 14px; height: 14px; border: 1.5px solid var(--amber); border-radius: 4px; flex: none; }
+.wg-row:hover .wg-box { background: var(--amber-soft); }
+.wg-empty { margin: 0; font-size: 13px; color: var(--ink3); }
+.wg-note { margin: 6px 0 0; font-size: 11.5px; color: var(--ink3); font-style: italic; }
+.wg-habs { display: flex; flex-wrap: wrap; gap: 8px; }
+.wg-hab { width: 38px; height: 38px; border-radius: 50%; border: 1.7px dashed var(--ink3); display: grid; place-items: center; font-size: 17px; background: var(--surf); }
+.wg-hab:hover { border-style: solid; border-color: var(--green); }
+.wg-hab.done { border: 1.7px solid var(--green); background: color-mix(in srgb, var(--green) 18%, var(--surf)); }
+.wg-chg { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 5px 8px; align-items: baseline; font-size: 12.5px; }
+.wg-who { font: 600 9.5px var(--mono); padding: 1px 5px; border-radius: 4px; background: var(--chip); color: var(--ink2); text-align: center; }
+.wg-who.src-mcp { background: var(--accent-soft); color: var(--accent); }
+.wg-chg .wg-tm { font-weight: 400; color: var(--ink3); font-size: 10.5px; }
+.wg-prog { display: flex; align-items: center; gap: 12px; font-size: 14px; }
+.wg-prog small { display: block; font-size: 12px; color: var(--ink3); }
+.wg-ring { width: 42px; height: 42px; border-radius: 50%; flex: none; background: conic-gradient(var(--green) calc(var(--p) * 1%), var(--bg3) 0); -webkit-mask: radial-gradient(circle, transparent 14px, #000 15px); mask: radial-gradient(circle, transparent 14px, #000 15px); }
+.wg-proj { display: flex; flex-direction: column; gap: 4px; padding: 5px 4px; margin: 0 -4px; border-radius: 7px; text-align: left; }
+.wg-proj:hover { background: var(--hov); }
+.wg-pr { display: flex; align-items: center; gap: 8px; font-size: 13.5px; }
+.wg-pr .dot { width: 8px; height: 8px; border-radius: 2px; background: var(--pc); flex: none; }
+.wg-pb { height: 5px; border-radius: 3px; background: var(--bg3); overflow: hidden; }
+.wg-pb i { display: block; height: 100%; background: var(--pc); border-radius: 3px; }
+.wg-pm { display: flex; justify-content: space-between; font: 10.5px var(--mono); color: var(--ink3); }
+.wg-edit { align-self: center; font-size: 12px; color: var(--ink3); padding: 4px 10px; border-radius: 6px; opacity: .35; transition: opacity .15s, background .15s; }
+.wg-edit:hover, .wg-edit:focus-visible { opacity: 1; background: var(--bg3); color: var(--ink2); }
+.wg-foot { display: flex; gap: 6px; }
+.wg-add { flex: 1; border: 1.5px dashed var(--bd); border-radius: var(--r); padding: 9px; color: var(--ink3); font-size: 13px; }
+.wg-add:hover { color: var(--accent); border-color: var(--accent); }
+.wg-done { padding: 0 14px; border-radius: 10px; background: var(--accent); color: #fff; font-weight: 600; font-size: 13px; }
+.rail.editing .wg { border-style: dashed; border-color: color-mix(in srgb, var(--accent) 45%, var(--bd)); cursor: grab; }
+.wg-ctl { display: flex; gap: 2px; align-items: center; }
+.wg-ctl button, .wg-grip { width: 22px; height: 22px; border-radius: 5px; display: grid; place-items: center; font-size: 12px; color: var(--ink2); }
+.wg-ctl button:hover { background: var(--bg3); color: var(--ink); }
+.wg-ctl button:disabled { opacity: .3; pointer-events: none; }
+.wg-grip { cursor: grab; letter-spacing: -2px; }
+.wg-ctl .wg-rm:hover { background: var(--red-soft); color: var(--red); }
+.wg.drag { opacity: .35; }
+.wg.drop-b::before, .wg.drop-a::after { content: ""; position: absolute; left: 6px; right: 6px; height: 3px; border-radius: 2px; background: var(--accent); }
+.wg.drop-b::before { top: -8px; } .wg.drop-a::after { bottom: -8px; }
+.wg-gal { background: var(--bg); border: 1px solid var(--line); border-radius: var(--r); box-shadow: var(--shadow); padding: 8px; display: flex; flex-direction: column; gap: 2px; }
+.wg-galh { display: flex; justify-content: space-between; font-size: 11px; font-weight: 650; letter-spacing: .07em; text-transform: uppercase; color: var(--ink3); padding: 4px 6px; }
+.wg-gal > button { text-align: left; padding: 6px 8px; border-radius: 7px; font-size: 13px; display: flex; flex-direction: column; }
+.wg-gal > button:hover { background: var(--accent-soft); }
+.wg-gal b { font-weight: 560; }
+.wg-gal b span { font: 400 10px var(--mono); color: var(--ink3); }
+.wg-gal small { color: var(--ink3); font-size: 11.5px; }
+@keyframes wg-wig { 0%, 100% { transform: rotate(-.35deg); } 50% { transform: rotate(.35deg); } }
+@media (prefers-reduced-motion: no-preference) { .rail.editing .wg:not(.drag) { animation: wg-wig .35s ease-in-out infinite; } .rail.editing .wg:nth-child(2n) { animation-delay: -.17s; } }
