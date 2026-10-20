@@ -47,6 +47,8 @@
 html, body { margin: 0; height: 100%; }
 /* No zoom (story V28): no double-tap zoom; the pinch is blocked in app.js. */
 html { touch-action: manipulation; }
+/* The scroll bar is always there: a short page and a long page have the same width, so the column and the rail never move by 7 px. */
+html { overflow-y: scroll; }
 /* Hover only where a real pointer hovers (story V30): on a touch screen, iOS keeps :hover on the last tapped or scrolled row. */
 body {
   background: var(--well); color: var(--ink);
@@ -838,15 +840,19 @@ body.resizing, body.resizing * { cursor: col-resize !important; user-select: non
   html body.has-rail .rail-grip { display: block; left: auto; right: calc(var(--rail-w) - 3px); z-index: 8; }
   body.has-rail .rail { display: flex; flex-direction: column; gap: 12px; position: fixed; top: 0; bottom: 0; right: 0; width: var(--rail-w); overflow-y: auto; overflow-x: hidden; padding: 0 12px 24px; background: var(--bg2); border-left: 1px solid var(--line); border-top: 84px solid var(--bg2); z-index: 4; scrollbar-width: thin; }
   /* The 84 px top is a border, not padding: a scroll box clips at its padding edge, so a scrolled widget never slides under the top buttons. */
-  /* A wide view: the rail is a 40 px strip and the content leaves room for it; open, the rail covers the content. */
-  body.rail-mini:not(.panel-open) .app { padding-right: 40px; }
-  body.rail-mini:not(.rail-peek) .rail { width: 40px; padding: 0; border-top: 0; }
+  /* A wide view: the rail folds to a thin edge line with a pull tab at mid-height, and the content leaves room for the tab;
+     open, the rail covers the content below the top buttons (they sit in the sticky header, which the rail cannot go under). */
+  body.rail-mini:not(.panel-open) .app { padding-right: 24px; }
+  /* Flag L38: a wide view keeps the docked rail, and the content ends at its left edge. */
+  body.rail-side:not(.panel-open) .app { padding-right: var(--rail-w); }
+  body:is(.rail-mini, .rail-side):not(.panel-open) main.centered .top { padding-left: calc(24px + var(--top-a, 0px)); padding-right: calc(24px + var(--top-b, 0px)); }
+  body.rail-mini:not(.rail-peek) .rail { width: 3px; padding: 0; border: 0; background: var(--line); overflow: visible; }
   html body.rail-mini:not(.rail-peek) .rail-grip { display: none; }
-  body.rail-peek .rail { z-index: 20; box-shadow: -10px 0 30px rgba(0, 0, 0, .1); }
-  html body.rail-peek .rail-grip { z-index: 21; }
+  body.rail-peek .rail { top: 70px; border-top-width: 14px; border-top-left-radius: 10px; z-index: 20; box-shadow: -10px 0 30px rgba(0, 0, 0, .1); }
+  html body.rail-peek .rail-grip { top: 70px; z-index: 21; }
 }
-.rail-strip { flex: 1; display: flex; justify-content: center; padding-top: 84px; color: var(--ink3); font-size: 18px; }
-.rail-strip:hover { color: var(--ink); background: var(--hov); }
+.rail-strip { position: absolute; top: 50%; right: 0; transform: translateY(-50%); width: 20px; height: 72px; display: flex; align-items: center; justify-content: center; padding: 0; background: var(--bg2); border: 1px solid var(--bd); border-right: 0; border-radius: 10px 0 0 10px; color: var(--ink3); font-size: 16px; box-shadow: -2px 0 6px rgba(0, 0, 0, .06); cursor: pointer; }
+.rail-strip:hover { color: var(--ink); width: 24px; background: var(--hov); }
 .wg-max { display: flex; align-items: center; gap: 6px; margin-top: 8px; font-size: 12.5px; color: var(--ink3); }
 .wg-max select { font: inherit; color: var(--ink); background: var(--bg2); border: 1px solid var(--bd); border-radius: 6px; padding: 1px 4px; }
 .nav .ico .done-ico { vertical-align: -3px; }

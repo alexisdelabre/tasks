@@ -29,6 +29,7 @@ const FLAGS = [
   { id: 'L23', name: 'Can start now, one task at a time', since: '2026-10-15' },
   { id: 'L34', name: 'Sidebar width: drag its edge', since: '2026-10-16' },
   { id: 'L35', name: 'Centered column and widget rail', since: '2026-10-19', beta: true },
+  { id: 'L38', name: 'Widget rail open on wide views', since: '2026-10-20' },
 ];
 // The test flag X0 exists only for e2e-channels.mjs: on localhost, with tasks.e2e set, so the frames never show it.
 if (location.hostname === 'localhost' && LS.get('e2e', false)) FLAGS.push({ id: 'X0', name: 'Test flag (local only)', since: '2026-10-15' });
@@ -1958,7 +1959,8 @@ if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.se
 // The column fits between the wider of the two bars on both sides: one set of widgets for the three views, kept in this browser (tasks.widgets). The task
 // panel covers the rail and does not move the column. Since 2026-10-20 every view has the column and the rail, except a wide view
 // (see l35Kind), which keeps its full width: the rail folds to a 40 px strip, and a click on it opens the rail over the content
-// until Esc or a click outside.
+// until Esc or a click outside. Flag L38 (to compare): a wide view keeps the open rail docked, and the content fills the space
+// between the sidebar and the rail; when that space is under 640 px, the view falls back to the tab.
 const L35_G = 20, L35_MIN = 640, L35_CAP = 836;
 let l35 = { on: false, rail: false, mini: false }, railW = navSnap(+LS.get('railWidth', NAV_DEF) || NAV_DEF), railCtx = null, wEdit = false, wGal = false, wDrag = null, wPeek = false;
 const wgs = Object.assign({ list: ['habits', 'cs', 'stock', 'chg', 'next', 'prog'], folded: ['next', 'prog'], max: {} }, LS.get('widgets', {}));
@@ -1980,9 +1982,11 @@ function l35Kind() {
 }
 function l35Apply() {
   const W = document.documentElement.clientWidth, side = $('#nav').getBoundingClientRect().width;
-  const kind = flagOn('L35') && W >= 1100 ? l35Kind() : '', on = kind === 'col', mini = kind === 'mini';
-  const was = l35.rail;
-  l35 = { on, rail: mini, mini };
+  let kind = flagOn('L35') && W >= 1100 ? l35Kind() : '';
+  if (kind === 'mini' && flagOn('L38') && W - side - railW >= L35_MIN) kind = 'side';
+  const on = kind === 'col', mini = kind === 'mini', sideRail = kind === 'side';
+  const was = l35.rail, wasMini = l35.mini;
+  l35 = { on, rail: mini || sideRail, mini };
   if (!mini) wPeek = false;
   document.documentElement.style.setProperty('--rail-w', railW + 'px');
   if (on) {
@@ -1996,8 +2000,14 @@ function l35Apply() {
   document.body.classList.toggle('l35', on);
   document.body.classList.toggle('has-rail', l35.rail);
   document.body.classList.toggle('rail-mini', mini);
+  document.body.classList.toggle('rail-side', sideRail);
+  // A wide view spans from the sidebar to the tab or the rail: its header pads one side so the title and the view switch keep
+  // the divider at the window center, the same place as in the centered column (a control keeps its place between views).
+  const fix = (sideRail ? railW : mini ? 24 : side) - side;
+  document.documentElement.style.setProperty('--top-a', Math.max(0, fix) + 'px');
+  document.documentElement.style.setProperty('--top-b', Math.max(0, -fix) + 'px');
   document.body.classList.toggle('rail-peek', wPeek);
-  return was !== l35.rail || (mini && !rail.childElementCount);
+  return was !== l35.rail || wasMini !== mini || (l35.rail && !rail.childElementCount);
 }
 const railPeek = v => { wPeek = v; document.body.classList.toggle('rail-peek', v); if (!v) { wEdit = false; wGal = false; } paintRail(); };
 // The open rail over a wide view closes on Esc or on a click outside it (not on the strip, the panel or a dialog).
